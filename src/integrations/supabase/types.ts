@@ -14,16 +14,151 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      conversations: {
+        Row: {
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          attachments: Json
+          completion_tokens: number | null
+          content: string
+          conversation_id: string
+          created_at: string
+          finish_reason: string | null
+          id: string
+          model: string | null
+          prompt_tokens: number | null
+          reasoning_effort: string | null
+          reasoning_tokens: number | null
+          role: string
+          seq: number
+          status: string
+          total_tokens: number | null
+          user_id: string
+        }
+        Insert: {
+          attachments?: Json
+          completion_tokens?: number | null
+          content?: string
+          conversation_id: string
+          created_at?: string
+          finish_reason?: string | null
+          id?: string
+          model?: string | null
+          prompt_tokens?: number | null
+          reasoning_effort?: string | null
+          reasoning_tokens?: number | null
+          role: string
+          seq?: never
+          status?: string
+          total_tokens?: number | null
+          user_id?: string
+        }
+        Update: {
+          attachments?: Json
+          completion_tokens?: number | null
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          finish_reason?: string | null
+          id?: string
+          model?: string | null
+          prompt_tokens?: number | null
+          reasoning_effort?: string | null
+          reasoning_tokens?: number | null
+          role?: string
+          seq?: never
+          status?: string
+          total_tokens?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_log: {
+        Row: {
+          created_at: string
+          id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_workspace_access: { Args: never; Returns: Json }
+      consume_chat_quota: { Args: never; Returns: Json }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "owner"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +285,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["owner"],
+    },
   },
 } as const
