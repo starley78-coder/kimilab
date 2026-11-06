@@ -97,7 +97,7 @@ async function buildApiMessages(supabase: DB, history: HistoryRow[]): Promise<Ap
   let imageTurns = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const row = history[i];
-    if (row.role !== "user") continue;
+    if (!row || row.role !== "user") continue;
     const atts = parseStoredAttachments(row.attachments);
     if (!atts.length) continue;
     if (imageTurns >= MAX_IMAGE_TURNS) break;
@@ -311,7 +311,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   let history: HistoryRow[] = [...rows].reverse();
   const idx = history.findIndex((r) => r.id === body.userMessageId);
   if (idx >= 0) history = history.slice(0, idx + 1);
-  while (history.length && history[0].role !== "user") history.shift();
+  while (history.length && history[0]?.role !== "user") history.shift();
 
   let apiMessages: ApiMessage[];
   try {

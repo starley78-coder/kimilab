@@ -41,10 +41,10 @@ export const PROVIDER_PRESETS = {
 export type ProviderKind = keyof typeof PROVIDER_PRESETS | "custom";
 
 export interface KimiEnv {
-  KIMI_API_KEY?: string;
-  KIMI_API_BASE_URL?: string;
-  KIMI_MODEL_ID?: string;
-  KIMI_MAX_TOKENS?: string;
+  KIMI_API_KEY?: string | undefined;
+  KIMI_API_BASE_URL?: string | undefined;
+  KIMI_MODEL_ID?: string | undefined;
+  KIMI_MAX_TOKENS?: string | undefined;
 }
 
 export interface KimiConfig {
