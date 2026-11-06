@@ -1,3 +1,5 @@
+import type { ChatError } from "./errors";
+
 /**
  * Minimal Server-Sent Events framing parser (shared by server and browser).
  * Feed it decoded text chunks; it calls onData for every complete `data:` payload.
@@ -154,4 +156,4 @@ export type ChatStreamEvent =
       assistantMessage: unknown;
       saved: boolean;
     }
-  | { type: "error"; error: import("./errors").ChatError };
+  | { type: "error"; error: ChatError };
