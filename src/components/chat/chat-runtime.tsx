@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   conversationsQuery,
   createConversation,
+  deleteConversation,
   messagesQuery,
   saveStoppedReply,
   uploadImage,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/chat/data";
 import { dataUrlToBlob, prepareImage } from "@/lib/chat/images";
 import {
+  IMAGE_BUCKET,
   MAX_IMAGES_PER_MESSAGE,
   deriveTitle,
   extensionForType,
@@ -266,12 +268,12 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         mediaType: p.mediaType,
       }));
 
-      store.set(conversationId, {
+      const makeTurn = (attachments: StoredAttachment[], status: TurnStatus): LiveTurn => ({
         conversationId,
         request: null,
-        userMessage: { id: userMessageId, content, attachments: [], previews },
+        userMessage: { id: userMessageId, content, attachments, previews },
         assistantMessageId,
-        status: prepared.length ? "uploading" : "submitted",
+        status,
         phase: "connecting",
         text: "",
         startedAt: Date.now(),
@@ -283,41 +285,53 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         mode: null,
       });
 
-      if (!existingId) {
+      // Existing thread: show the message right away while images upload.
+      if (existingId) store.set(conversationId, makeTurn([], prepared.length ? "uploading" : "submitted"));
+
+      const uploads = await Promise.allSettled(
+        prepared.map(async (p): Promise<StoredAttachment> => {
+          const path = `${userId}/${conversationId}/${crypto.randomUUID()}.${extensionForType(p.mediaType)}`;
+          await uploadImage(path, p.blob, p.mediaType);
+          return {
+            path,
+            name: p.name.slice(0, 200),
+            mediaType: p.mediaType,
+            size: p.blob.size,
+            width: p.width,
+            height: p.height,
+          };
+        }),
+      );
+      const failed = uploads.find((u): u is PromiseRejectedResult => u.status === "rejected");
+      const attachments = uploads
+        .filter((u): u is PromiseFulfilledResult<StoredAttachment> => u.status === "fulfilled")
+        .map((u) => u.value);
+      if (failed) {
+        // Keep the composer input intact: undo everything and surface the error.
+        if (attachments.length) {
+          void supabase.storage.from(IMAGE_BUCKET).remove(attachments.map((a) => a.path));
+        }
+        for (const p of previews) URL.revokeObjectURL(p.url);
+        if (existingId) {
+          store.delete(conversationId);
+        } else {
+          void deleteConversation(conversationId).catch(() => undefined);
+          queryClient.setQueryData<ConversationRow[]>(conversationsQuery().queryKey, (old) =>
+            (old ?? []).filter((c) => c.id !== conversationId),
+          );
+        }
+        const reason = failed.reason instanceof Error ? failed.reason.message : "Ошибка загрузки";
+        toast.error("Не удалось загрузить изображение", { description: reason });
+        throw failed.reason;
+      }
+
+      if (existingId) {
+        store.patch(conversationId, (t) => ({ userMessage: { ...t.userMessage, attachments } }));
+      } else {
+        store.set(conversationId, makeTurn(attachments, "submitted"));
         void navigate({ to: "/chat/$conversationId", params: { conversationId } });
       }
 
-      let attachments: StoredAttachment[] = [];
-      try {
-        attachments = await Promise.all(
-          prepared.map(async (p) => {
-            const path = `${userId}/${conversationId}/${crypto.randomUUID()}.${extensionForType(p.mediaType)}`;
-            await uploadImage(path, p.blob, p.mediaType);
-            return {
-              path,
-              name: p.name.slice(0, 200),
-              mediaType: p.mediaType,
-              size: p.blob.size,
-              width: p.width,
-              height: p.height,
-            };
-          }),
-        );
-      } catch (e) {
-        store.patch(conversationId, {
-          status: "error",
-          error: {
-            source: "app",
-            status: 0,
-            code: "upload_failed",
-            title: "Не удалось загрузить изображение",
-            message: e instanceof Error ? e.message : "Ошибка загрузки",
-          },
-        });
-        return;
-      }
-
-      store.patch(conversationId, (t) => ({ userMessage: { ...t.userMessage, attachments } }));
       void runTurn(conversationId, {
         conversationId,
         userMessageId,
@@ -442,7 +456,3 @@ export function isTurnActive(turn: LiveTurn | undefined) {
   return isActive(turn);
 }
 
-export async function currentUserId(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.user.id ?? null;
-}
