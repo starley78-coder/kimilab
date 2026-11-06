@@ -112,7 +112,7 @@ function ConversationItem({
   );
 }
 
-function SearchResults({ query, activeId }: { query: string; activeId?: string }) {
+function SearchResults({ query, activeId }: { query: string; activeId?: string | undefined }) {
   const closeOnMobile = useCloseOnMobile();
   const results = useQuery({
     queryKey: ["search", query],

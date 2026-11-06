@@ -13,8 +13,8 @@ export interface ChatError {
   title: string;
   message: string;
   /** Sanitized provider detail, if any. */
-  detail?: string;
-  retryAfter?: number;
+  detail?: string | undefined;
+  retryAfter?: number | undefined;
 }
 
 const KEY_PATTERNS: RegExp[] = [

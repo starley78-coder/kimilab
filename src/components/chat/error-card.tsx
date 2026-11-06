@@ -19,9 +19,9 @@ export function ErrorCard({
   onOpenSettings,
 }: {
   error: ChatError;
-  onRetry?: () => void;
-  onDismiss?: () => void;
-  onOpenSettings?: () => void;
+  onRetry?: (() => void) | undefined;
+  onDismiss?: (() => void) | undefined;
+  onOpenSettings?: (() => void) | undefined;
 }) {
   const Icon = error.source === "network" ? WifiOff : AlertTriangle;
   const sourceLabel =

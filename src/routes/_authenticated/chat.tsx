@@ -59,7 +59,7 @@ function ChatError({ error, reset }: ErrorComponentProps) {
       <div className="max-w-sm text-center">
         <BrandMark className="mx-auto size-10" />
         <h1 className="mt-4 text-lg font-semibold">Не удалось открыть Kimi Lab</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : String(error)}</p>
         <Button className="mt-5" onClick={reset}>
           Повторить
         </Button>

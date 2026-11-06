@@ -84,7 +84,7 @@ function MessageImages({
   previews,
 }: {
   attachments: StoredAttachment[];
-  previews?: { url: string; name: string; mediaType: string }[];
+  previews?: { url: string; name: string; mediaType: string }[] | undefined;
 }) {
   const paths = previews?.length ? [] : attachments.map((a) => a.path);
   const signed = useQuery(signedUrlsQuery(paths));
@@ -136,7 +136,7 @@ export function UserMessage({
 }: {
   content: string;
   attachments: StoredAttachment[];
-  previews?: { url: string; name: string; mediaType: string }[];
+  previews?: { url: string; name: string; mediaType: string }[] | undefined;
 }) {
   return (
     <Message from="user" className="max-w-[85%] sm:max-w-[75%]">
@@ -229,7 +229,7 @@ export function LiveAssistant({ turn }: { turn: LiveTurn }) {
           <MessageResponse
             className="prose-answer"
             isAnimating={running}
-            caret={running ? "block" : undefined}
+            {...(running ? { caret: "block" as const } : {})}
             translations={streamdownTranslations}
           >
             {turn.text}

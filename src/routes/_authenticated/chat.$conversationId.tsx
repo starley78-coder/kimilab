@@ -80,7 +80,7 @@ function ThreadError({ error, reset }: ErrorComponentProps) {
             status: 0,
             code: "load_failed",
             title: "Не удалось загрузить диалог",
-            message: error.message,
+            message: error instanceof Error ? error.message : String(error),
           }}
           onRetry={reset}
         />
