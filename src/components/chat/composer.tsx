@@ -1,5 +1,5 @@
 import { Eraser, ImagePlus } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -117,18 +117,25 @@ function EffortSelect() {
   );
 }
 
-function SubmitControl({ conversationId }: { conversationId: string | null }) {
+function SubmitControl({ conversationId, submitting }: { conversationId: string | null; submitting: boolean }) {
   const controller = usePromptInputController();
   const turn = useLiveTurn(conversationId);
   const { stop } = useChatRuntime();
   const active = isTurnActive(turn);
-  const status = !active ? undefined : turn?.status === "streaming" ? "streaming" : "submitted";
+  const status = submitting
+    ? "submitted"
+    : !active
+      ? undefined
+      : turn?.status === "streaming"
+        ? "streaming"
+        : "submitted";
   const empty = !controller.textInput.value.trim() && controller.attachments.files.length === 0;
+  const canStop = active && !!conversationId && turn?.status !== "uploading";
   return (
     <PromptInputSubmit
       status={status}
-      onStop={conversationId ? () => stop(conversationId) : undefined}
-      disabled={!active && empty}
+      onStop={canStop ? () => stop(conversationId!) : undefined}
+      disabled={submitting || (active ? !canStop : empty)}
       aria-label={active ? "Остановить генерацию" : "Отправить"}
       className="rounded-lg"
     />
@@ -146,6 +153,7 @@ function ComposerInner({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const turn = useLiveTurn(conversationId);
   const active = isTurnActive(turn);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -156,9 +164,15 @@ function ComposerInner({
   }, [active]);
 
   const handleSubmit = async (message: PromptInputMessage) => {
-    if (active) return;
-    await send({ conversationId, text: message.text, files: message.files });
-    textareaRef.current?.focus();
+    // Throwing keeps the typed text: PromptInput only clears after a successful submit.
+    if (active || submitting) throw new Error("busy");
+    setSubmitting(true);
+    try {
+      await send({ conversationId, text: message.text, files: message.files });
+    } finally {
+      setSubmitting(false);
+      textareaRef.current?.focus();
+    }
   };
 
   return (
@@ -198,7 +212,7 @@ function ComposerInner({
         </PromptInputTools>
         <div className="flex items-center gap-1">
           <ClearButton />
-          <SubmitControl conversationId={conversationId} />
+          <SubmitControl conversationId={conversationId} submitting={submitting} />
         </div>
       </PromptInputFooter>
     </PromptInput>
