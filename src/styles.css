@@ -59,6 +59,9 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-danger-soft: var(--danger-soft);
+  --color-google: var(--google);
+  --color-google-foreground: var(--google-foreground);
+  --color-google-border: var(--google-border);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -111,6 +114,10 @@
   --warning: oklch(0.62 0.14 70);
   --warning-soft: oklch(0.96 0.04 85);
   --danger-soft: oklch(0.96 0.025 25);
+  /* Google sign-in button (brand guideline: light theme) */
+  --google: #ffffff;
+  --google-foreground: #1f1f1f;
+  --google-border: #747775;
 
   --composer-shadow: 0 1px 0 oklch(0.2 0.01 265 / 4%), 0 8px 28px -12px oklch(0.2 0.01 265 / 18%);
   --float-shadow: 0 12px 40px -16px oklch(0.2 0.01 265 / 25%);
@@ -162,6 +169,10 @@
   --warning: oklch(0.78 0.13 80);
   --warning-soft: oklch(0.29 0.04 80);
   --danger-soft: oklch(0.28 0.05 25);
+  /* Google sign-in button (brand guideline: dark theme) */
+  --google: #131314;
+  --google-foreground: #e3e3e3;
+  --google-border: #8e918f;
 
   --composer-shadow: 0 1px 0 oklch(1 0 0 / 4%), 0 10px 30px -14px oklch(0 0 0 / 60%);
   --float-shadow: 0 12px 40px -16px oklch(0 0 0 / 70%);
