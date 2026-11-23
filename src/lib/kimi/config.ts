@@ -133,3 +133,12 @@ export function chatCompletionsUrl(config: Pick<KimiConfig, "baseUrl">): string 
 export function modelsUrl(config: Pick<KimiConfig, "baseUrl">): string {
   return `${config.baseUrl}/models`;
 }
+
+/**
+ * Optional context window size (KIMI_CONTEXT_WINDOW). It is only shown when the owner
+ * sets it: the app never assumes a limit the provider has not confirmed.
+ */
+export function parseContextWindow(raw: string | undefined): number | null {
+  const n = Number.parseInt((raw ?? "").trim(), 10);
+  return Number.isFinite(n) && n >= 1000 ? n : null;
+}

@@ -42,3 +42,7 @@ use the editor.
 - **Rate limit.** `consume_chat_quota()` runs on the server before each provider request. Why: atomic and not bypassable from the browser.
 - **Chat UI.** Compose the thread, messages and composer from `src/components/ai-elements`; app-specific pieces live in `src/components/chat`. Why: one consistent chat surface.
 - **Rules are tested** in `src/test/kimi-rules.test.ts`; extend it when a provider, error or effort rule changes.
+- **System instructions.** A conversation's `system_prompt` wins; `null` falls back to `user_settings.default_system_prompt`; empty string means none (`resolveSystemPrompt`). Resolved on the server only. Why: one predictable precedence.
+- **Text files** are inlined into message content as `<file name="…">` blocks (`src/lib/chat/text-files.ts`), not stored in the bucket. Why: the model reads them as text and history replays them.
+- **Context meter** uses only API usage of the last reply; a percentage appears only when `KIMI_CONTEXT_WINDOW` is set. Why: no invented limits.
+- **Backups** (`src/lib/chat/export.ts`) are versioned JSON without image files; import always creates new conversations. Why: never overwrite existing data.

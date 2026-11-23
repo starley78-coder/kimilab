@@ -1,4 +1,5 @@
-import { AlertTriangle, RotateCcw, Settings2, WifiOff, X } from "lucide-react";
+import { AlertTriangle, RotateCcw, Settings2, Timer, WifiOff, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { ChatError } from "@/lib/kimi/errors";
@@ -11,6 +12,50 @@ const CONFIG_CODES = new Set([
   "connection_failed",
   "payment_required",
 ]);
+
+const RATE_LIMIT_CODES = new Set(["provider_rate_limited", "app_rate_limited"]);
+/** Waits longer than this are not retried automatically. */
+export const MAX_AUTO_RETRY_SECONDS = 120;
+
+/** Seconds to wait before an automatic retry, or null when the error should not auto-retry. */
+export function autoRetryDelay(error: Pick<ChatError, "code" | "retryAfter">): number | null {
+  if (!RATE_LIMIT_CODES.has(error.code)) return null;
+  const s = error.retryAfter;
+  if (typeof s !== "number" || !Number.isFinite(s) || s < 0 || s > MAX_AUTO_RETRY_SECONDS)
+    return null;
+  return Math.max(1, Math.ceil(s));
+}
+
+function RetryCountdown({ seconds, onRetry }: { seconds: number; onRetry: () => void }) {
+  const [left, setLeft] = useState(seconds);
+  const [cancelled, setCancelled] = useState(false);
+  const retryRef = useRef(onRetry);
+  retryRef.current = onRetry;
+  useEffect(() => {
+    if (cancelled) return;
+    if (left <= 0) {
+      retryRef.current();
+      return;
+    }
+    const t = setTimeout(() => setLeft((l) => l - 1), 1000);
+    return () => clearTimeout(t);
+  }, [left, cancelled]);
+  if (cancelled) return null;
+  return (
+    <div
+      className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+      aria-live="polite"
+    >
+      <Timer className="size-3.5" />
+      <span>
+        Автоповтор через <span className="font-mono tabular-nums text-foreground">{left}</span> с
+      </span>
+      <Button size="xs" variant="ghost" onClick={() => setCancelled(true)}>
+        Отменить
+      </Button>
+    </div>
+  );
+}
 
 export function ErrorCard({
   error,
@@ -47,6 +92,9 @@ export function ErrorCard({
             <p className="mt-2 break-words rounded-md bg-background/60 px-2.5 py-1.5 font-mono text-xs text-muted-foreground">
               {error.detail}
             </p>
+          )}
+          {onRetry && autoRetryDelay(error) !== null && (
+            <RetryCountdown seconds={autoRetryDelay(error) ?? 0} onRetry={onRetry} />
           )}
           {(onRetry || (onOpenSettings && CONFIG_CODES.has(error.code))) && (
             <div className="mt-3 flex flex-wrap gap-2">

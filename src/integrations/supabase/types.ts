@@ -18,6 +18,9 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_archived: boolean
+          is_pinned: boolean
+          system_prompt: string | null
           title: string
           updated_at: string
           user_id: string
@@ -25,6 +28,9 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_archived?: boolean
+          is_pinned?: boolean
+          system_prompt?: string | null
           title?: string
           updated_at?: string
           user_id?: string
@@ -32,6 +38,9 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_archived?: boolean
+          is_pinned?: boolean
+          system_prompt?: string | null
           title?: string
           updated_at?: string
           user_id?: string
@@ -138,6 +147,24 @@ export type Database = {
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          default_system_prompt: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          default_system_prompt?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          default_system_prompt?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

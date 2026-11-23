@@ -1,6 +1,18 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { CheckCircle2, CircleAlert, Loader2, Monitor, Moon, PlugZap, Sun } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  Download,
+  Loader2,
+  Monitor,
+  Moon,
+  PlugZap,
+  Sun,
+  Upload,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { ErrorCard } from "@/components/chat/error-card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +23,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { kimiStatusQuery } from "@/lib/chat/data";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  conversationsQuery,
+  importBackup,
+  kimiStatusQuery,
+  loadEverything,
+  saveDefaultSystemPrompt,
+  userSettingsQuery,
+} from "@/lib/chat/data";
+import { buildBackup, downloadText, parseBackup } from "@/lib/chat/export";
+import { formatTokens } from "@/lib/format";
 import { checkKimiConnection } from "@/lib/kimi.functions";
 import {
   MODEL_DISPLAY_NAME,
@@ -93,10 +115,134 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+const MAX_PROMPT = 20_000;
+
+function DefaultPromptSection({ userId, open }: { userId: string; open: boolean }) {
+  const queryClient = useQueryClient();
+  const settings = useQuery({ ...userSettingsQuery(), enabled: open });
+  const [value, setValue] = useState("");
+  const saved = settings.data?.default_system_prompt ?? "";
+  useEffect(() => {
+    if (settings.data) setValue(settings.data.default_system_prompt);
+  }, [settings.data]);
+  const save = useMutation({
+    mutationFn: () => saveDefaultSystemPrompt(userId, value),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: userSettingsQuery().queryKey });
+      toast.success(
+        value.trim() ? "Инструкция по умолчанию сохранена" : "Инструкция по умолчанию очищена",
+      );
+    },
+    onError: (e) => toast.error("Не удалось сохранить", { description: e.message }),
+  });
+  const dirty = value.trim() !== saved.trim();
+  return (
+    <Section
+      title="Системная инструкция по умолчанию"
+      hint="Отправляется первой (role: system) во всех диалогах, где не задана своя инструкция."
+    >
+      <Textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Например: «Отвечай кратко, по-русски. Код — на TypeScript со строгой типизацией.»"
+        className="max-h-64 min-h-24 text-sm"
+        maxLength={MAX_PROMPT}
+        disabled={settings.isPending}
+        aria-label="Системная инструкция по умолчанию"
+      />
+      <div className="flex items-center gap-3">
+        <Button size="sm" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>
+          {save.isPending && <Loader2 className="animate-spin" />} Сохранить
+        </Button>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+          {value.length.toLocaleString("ru-RU")} / {MAX_PROMPT.toLocaleString("ru-RU")}
+        </span>
+      </div>
+    </Section>
+  );
+}
+
+function DataSection() {
+  const queryClient = useQueryClient();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const exportAll = useMutation({
+    mutationFn: async () => {
+      const { conversations, messages } = await loadEverything();
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadText(
+        `kimi-lab-backup-${stamp}.json`,
+        JSON.stringify(buildBackup(conversations, messages), null, 2),
+        "application/json",
+      );
+      return { conversations: conversations.length, messages: messages.length };
+    },
+    onSuccess: (r) =>
+      toast.success(`Сохранено: ${r.conversations} диалогов, ${r.messages} сообщений`),
+    onError: (e) => toast.error("Экспорт не удался", { description: e.message }),
+  });
+  const importAll = useMutation({
+    mutationFn: async (file: File) => {
+      const parsed = parseBackup(await file.text());
+      if (!parsed.ok) throw new Error(parsed.error);
+      return importBackup(parsed.backup, (done, total) => setProgress(`${done} из ${total}`));
+    },
+    onSuccess: async (r) => {
+      await queryClient.invalidateQueries({ queryKey: conversationsQuery().queryKey });
+      toast.success(`Восстановлено: ${r.conversations} диалогов, ${r.messages} сообщений`);
+    },
+    onError: (e) => toast.error("Импорт не удался", { description: e.message }),
+    onSettled: () => setProgress(null),
+  });
+  return (
+    <Section
+      title="Данные"
+      hint="Резервная копия — JSON со всеми диалогами, инструкциями и данными usage. Изображения в неё не входят."
+    >
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => exportAll.mutate()}
+          disabled={exportAll.isPending}
+        >
+          {exportAll.isPending ? <Loader2 className="animate-spin" /> : <Download />}
+          Скачать резервную копию
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => fileInput.current?.click()}
+          disabled={importAll.isPending}
+        >
+          {importAll.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+          {importAll.isPending && progress ? `Импорт: ${progress}` : "Восстановить из файла"}
+        </Button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.currentTarget.files?.[0];
+            e.currentTarget.value = "";
+            if (f) importAll.mutate(f);
+          }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Восстановленные диалоги добавляются как новые — существующие не изменяются.
+      </p>
+    </Section>
+  );
+}
+
 export function SettingsDialog({
+  userId,
   open,
   onOpenChange,
 }: {
+  userId: string;
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
@@ -113,7 +259,9 @@ export function SettingsDialog({
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Настройки</DialogTitle>
-          <DialogDescription>Модель, рассуждения, подключение и оформление.</DialogDescription>
+          <DialogDescription>
+            Модель, инструкции, рассуждения, данные и оформление.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-6">
@@ -124,6 +272,13 @@ export function SettingsDialog({
               </Row>
               <Row label="ID модели">
                 <code className="font-mono text-xs">{s?.modelId ?? "—"}</code>
+              </Row>
+              <Row label="Контекстное окно">
+                {s?.contextWindow ? (
+                  `${formatTokens(s.contextWindow)} токенов`
+                ) : (
+                  <span className="text-muted-foreground">не задано</span>
+                )}
               </Row>
               <Row label="Провайдер">{s?.providerLabel ?? "—"}</Row>
               <Row label="Адрес API">
@@ -190,6 +345,8 @@ export function SettingsDialog({
             </p>
           </Section>
 
+          <DefaultPromptSection userId={userId} open={open} />
+
           <Section
             title="Уровень рассуждений"
             hint="Передаётся в параметре reasoning_effort. Режим Thinking у Kimi K3.1 Pro всегда включён; внутренние рассуждения не показываются — только итоговый ответ."
@@ -219,12 +376,18 @@ export function SettingsDialog({
             />
           </Section>
 
+          <DataSection />
+
           <Section title="Ограничения и расход">
             <ul className="grid gap-1.5 text-xs text-muted-foreground">
               <li>Ограничение приложения: до 10 запросов в минуту и 500 в сутки.</li>
               <li>
                 Токены показываются из поля usage, которое возвращает API. Стоимость не
                 рассчитывается.
+              </li>
+              <li>
+                Размер контекстного окна показывается, только если он задан в серверном секрете
+                KIMI_CONTEXT_WINDOW.
               </li>
               <li>
                 Изображения хранятся в приватном хранилище, в истории сохраняется только текст и

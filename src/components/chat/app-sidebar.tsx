@@ -1,25 +1,27 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
+  Archive,
   Check,
+  ChevronRight,
   ChevronsUpDown,
   LogOut,
   MessageSquareDashed,
   Monitor,
   Moon,
   MoreHorizontal,
-  Pencil,
+  Pin,
   Search,
   Settings2,
   SquarePen,
   Sun,
-  Trash2,
   X,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useState } from "react";
 
 import { BrandWordmark } from "@/components/brand-mark";
 import { isTurnActive, useLiveTurns } from "@/components/chat/chat-runtime";
+import { ConversationMenuItems } from "@/components/chat/conversation-actions";
 import {
   DeleteConversationDialog,
   RenameConversationDialog,
@@ -90,6 +92,9 @@ function ConversationItem({
           onClick={closeOnMobile}
           title={conversation.title}
         >
+          {conversation.is_pinned && (
+            <Pin className="size-3 shrink-0 text-muted-foreground" aria-label="Закреплён" />
+          )}
           <span className="truncate">{conversation.title}</span>
           {live && (
             <span
@@ -105,13 +110,12 @@ function ConversationItem({
             <MoreHorizontal />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" className="w-44">
-          <DropdownMenuItem onSelect={onRename}>
-            <Pencil /> Переименовать
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onDelete} className="text-destructive focus:text-destructive">
-            <Trash2 /> Удалить
-          </DropdownMenuItem>
+        <DropdownMenuContent side="right" align="start" className="w-52">
+          <ConversationMenuItems
+            conversation={conversation}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
@@ -260,7 +264,23 @@ export function AppSidebar({ email }: { email: string }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  const groups = groupByDate(conversations.data ?? []);
+  const all = conversations.data ?? [];
+  const pinned = all.filter((c) => c.is_pinned && !c.is_archived);
+  const archived = all.filter((c) => c.is_archived);
+  const groups = groupByDate(all.filter((c) => !c.is_pinned && !c.is_archived));
+  const activeArchived = archived.some((c) => c.id === activeId);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const showArchive = archiveOpen || activeArchived;
+  const renderItem = (c: ConversationRow) => (
+    <ConversationItem
+      key={c.id}
+      conversation={c}
+      active={c.id === activeId}
+      live={isTurnActive(liveTurns.get(c.id))}
+      onRename={() => setRenaming(c)}
+      onDelete={() => setDeleting(c)}
+    />
+  );
 
   return (
     <>
@@ -318,31 +338,52 @@ export function AppSidebar({ email }: { email: string }) {
             <p className="px-4 py-3 text-xs text-destructive">
               Не удалось загрузить диалоги: {conversations.error.message}
             </p>
-          ) : groups.length === 0 ? (
+          ) : all.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-xs text-muted-foreground">
               <MessageSquareDashed className="size-5" />
               Диалогов пока нет. Начните новый — он сохранится здесь.
             </div>
           ) : (
-            groups.map(({ group, items }) => (
-              <SidebarGroup key={group} className="py-1">
-                <SidebarGroupLabel>{group}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {items.map((c) => (
-                      <ConversationItem
-                        key={c.id}
-                        conversation={c}
-                        active={c.id === activeId}
-                        live={isTurnActive(liveTurns.get(c.id))}
-                        onRename={() => setRenaming(c)}
-                        onDelete={() => setDeleting(c)}
-                      />
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))
+            <>
+              {pinned.length > 0 && (
+                <SidebarGroup className="py-1">
+                  <SidebarGroupLabel>Закреплённые</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>{pinned.map(renderItem)}</SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
+              {groups.map(({ group, items }) => (
+                <SidebarGroup key={group} className="py-1">
+                  <SidebarGroupLabel>{group}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>{items.map(renderItem)}</SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ))}
+              {archived.length > 0 && (
+                <SidebarGroup className="mt-auto py-1">
+                  <button
+                    type="button"
+                    onClick={() => setArchiveOpen((o) => !o)}
+                    aria-expanded={showArchive}
+                    className="flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  >
+                    <Archive className="size-3.5" />
+                    Архив
+                    <span className="tabular-nums">{archived.length}</span>
+                    <ChevronRight
+                      className={`ml-auto size-3.5 transition-transform ${showArchive ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                  {showArchive && (
+                    <SidebarGroupContent>
+                      <SidebarMenu>{archived.map(renderItem)}</SidebarMenu>
+                    </SidebarGroupContent>
+                  )}
+                </SidebarGroup>
+              )}
+            </>
           )}
         </SidebarContent>
 

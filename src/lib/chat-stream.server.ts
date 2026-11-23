@@ -22,7 +22,13 @@ import {
   sanitizeProviderText,
   type ChatError,
 } from "@/lib/kimi/errors";
-import { buildKimiRequest, userContentWithImages, type ApiMessage } from "@/lib/kimi/request";
+import {
+  buildKimiRequest,
+  resolveSystemPrompt,
+  userContentWithImages,
+  withSystemPrompt,
+  type ApiMessage,
+} from "@/lib/kimi/request";
 import {
   createSseParser,
   parseCompletionChunk,
@@ -280,7 +286,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   // 4. Conversation must belong to the caller (RLS)
   const { data: conversation, error: convError } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, system_prompt")
     .eq("id", body.conversationId)
     .maybeSingle();
   if (convError || !conversation) {
@@ -367,7 +373,18 @@ export async function handleChatRequest(request: Request): Promise<Response> {
 
   let apiMessages: ApiMessage[];
   try {
-    apiMessages = await buildApiMessages(supabase, history);
+    let defaultPrompt = "";
+    if (conversation.system_prompt === null) {
+      const { data: settings } = await supabase
+        .from("user_settings")
+        .select("default_system_prompt")
+        .maybeSingle();
+      defaultPrompt = settings?.default_system_prompt ?? "";
+    }
+    apiMessages = withSystemPrompt(
+      await buildApiMessages(supabase, history),
+      resolveSystemPrompt(conversation.system_prompt, defaultPrompt),
+    );
   } catch (e) {
     console.error("[chat] build messages failed", e);
     return errorResponse(

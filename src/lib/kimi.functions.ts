@@ -1,7 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { MODEL_DISPLAY_NAME, modelsUrl, resolveKimiConfig } from "@/lib/kimi/config";
+import {
+  MODEL_DISPLAY_NAME,
+  modelsUrl,
+  parseContextWindow,
+  resolveKimiConfig,
+} from "@/lib/kimi/config";
 import {
   connectionError,
   describeProviderError,
@@ -19,6 +24,8 @@ export interface KimiStatus {
   host: string | null;
   modelId: string | null;
   modelDisplayName: string;
+  /** Context window from KIMI_CONTEXT_WINDOW, or null when not configured. */
+  contextWindow: number | null;
 }
 
 export interface KimiConnectionCheck {
@@ -54,6 +61,7 @@ export const getKimiStatus = createServerFn({ method: "GET" })
         host: null,
         modelId: env.KIMI_MODEL_ID?.trim() || null,
         modelDisplayName: MODEL_DISPLAY_NAME,
+        contextWindow: parseContextWindow(process.env["KIMI_CONTEXT_WINDOW"]),
       };
     }
     const { config } = resolved;
@@ -66,6 +74,7 @@ export const getKimiStatus = createServerFn({ method: "GET" })
       host: config.host,
       modelId: config.modelId,
       modelDisplayName: MODEL_DISPLAY_NAME,
+      contextWindow: parseContextWindow(process.env["KIMI_CONTEXT_WINDOW"]),
     };
   });
 

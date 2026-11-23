@@ -8,14 +8,14 @@ interface SettingsContextValue {
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
-export function SettingsProvider({ children }: { children: ReactNode }) {
+export function SettingsProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const openSettings = useCallback(() => setOpen(true), []);
   const value = useMemo(() => ({ openSettings }), [openSettings]);
   return (
     <SettingsContext.Provider value={value}>
       {children}
-      <SettingsDialog open={open} onOpenChange={setOpen} />
+      <SettingsDialog userId={userId} open={open} onOpenChange={setOpen} />
     </SettingsContext.Provider>
   );
 }

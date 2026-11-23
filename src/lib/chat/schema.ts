@@ -10,7 +10,7 @@ export const MAX_IMAGES_PER_MESSAGE = 4;
 export const MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024;
 /** Max stored size after downscaling (bucket limit is 10 MB). */
 export const MAX_IMAGE_STORED_BYTES = 8 * 1024 * 1024;
-export const MAX_MESSAGE_CHARS = 100_000;
+export const MAX_MESSAGE_CHARS = 300_000;
 
 export const storedAttachmentSchema = z.object({
   path: z
@@ -63,5 +63,10 @@ export function extensionForType(type: AllowedImageType): "png" | "jpg" | "webp"
 export function deriveTitle(text: string, hasImages: boolean): string {
   const clean = text.replace(/\s+/g, " ").trim();
   if (!clean) return hasImages ? "Анализ изображения" : "Новый диалог";
+  const file = /^<file name="([^"\n]*)">/.exec(clean);
+  if (file) {
+    const rest = clean.replace(/<file name="[^"\n]*">[\s\S]*?<\/file>/g, "").trim();
+    return deriveTitle(rest || `Файл: ${file[1]}`, hasImages);
+  }
   return clean.length > 60 ? `${clean.slice(0, 57).trimEnd()}…` : clean;
 }

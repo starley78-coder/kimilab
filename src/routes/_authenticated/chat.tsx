@@ -10,6 +10,7 @@ import { Lock, LogOut } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { AppSidebar } from "@/components/chat/app-sidebar";
 import { ChatRuntimeProvider } from "@/components/chat/chat-runtime";
+import { CodeDrawerProvider } from "@/components/chat/code-drawer";
 import { SettingsProvider } from "@/components/chat/settings-context";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -115,13 +116,15 @@ function ChatLayout() {
 
   return (
     <ChatRuntimeProvider userId={user.id}>
-      <SettingsProvider>
-        <SidebarProvider>
-          <AppSidebar email={email} />
-          <SidebarInset className="flex h-dvh min-h-0 flex-col overflow-hidden">
-            <Outlet />
-          </SidebarInset>
-        </SidebarProvider>
+      <SettingsProvider userId={user.id}>
+        <CodeDrawerProvider>
+          <SidebarProvider>
+            <AppSidebar email={email} />
+            <SidebarInset className="flex h-dvh min-h-0 flex-col overflow-hidden">
+              <Outlet />
+            </SidebarInset>
+          </SidebarProvider>
+        </CodeDrawerProvider>
       </SettingsProvider>
     </ChatRuntimeProvider>
   );

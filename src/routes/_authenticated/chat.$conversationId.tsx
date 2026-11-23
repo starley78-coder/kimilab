@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, type ErrorComponentProps } from "@tanstack/react-router";
-import { MessageSquareX, MoreHorizontal, Pencil, Send, Trash2 } from "lucide-react";
+import { Archive, MessageSquareX, MoreHorizontal, Send } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -12,18 +12,22 @@ import { ChatHeader } from "@/components/chat/chat-header";
 import { useChatRuntime, useLiveTurn } from "@/components/chat/chat-runtime";
 import { Composer } from "@/components/chat/composer";
 import {
+  ConversationMenuItems,
+  useConversationActions,
+} from "@/components/chat/conversation-actions";
+import {
   DeleteConversationDialog,
   RenameConversationDialog,
 } from "@/components/chat/conversation-dialogs";
 import { ErrorCard } from "@/components/chat/error-card";
 import { AssistantMessage, LiveAssistant, UserMessage } from "@/components/chat/message-item";
 import { useSettings } from "@/components/chat/settings-context";
+import { ContextMeter, SystemPromptButton } from "@/components/chat/thread-tools";
 import { ConversationUsage } from "@/components/chat/usage";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -114,16 +118,12 @@ function ThreadActions({ conversation }: { conversation: ConversationRow }) {
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onSelect={() => setRenaming(conversation)}>
-            <Pencil /> Переименовать
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => setDeleting(conversation)}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 /> Удалить
-          </DropdownMenuItem>
+        <DropdownMenuContent align="end" className="w-52">
+          <ConversationMenuItems
+            conversation={conversation}
+            onRename={() => setRenaming(conversation)}
+            onDelete={() => setDeleting(conversation)}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
       <RenameConversationDialog
@@ -142,7 +142,8 @@ function ThreadView({ conversationId }: { conversationId: string }) {
   const { data: messages } = useSuspenseQuery(messagesQuery(conversationId));
   const { data: conversation } = useSuspenseQuery(conversationQuery(conversationId));
   const turn = useLiveTurn(conversationId);
-  const { retry, resend, dismiss } = useChatRuntime();
+  const { retry, resend, dismiss, regenerate, editAndResend } = useChatRuntime();
+  const { toggleArchive } = useConversationActions();
   const { openSettings } = useSettings();
 
   if (!conversation && !turn) {
@@ -170,21 +171,51 @@ function ThreadView({ conversationId }: { conversationId: string }) {
   // The last question has no answer: the provider failed, or the reply was stopped before any text.
   const dangling = !turn && !!lastUser && (last?.role === "user" || stoppedEarly);
   const visible = messages.filter((m) => !isEmptyStoppedReply(m));
+  const lastVisible = visible.at(-1);
+  const regenQuestion =
+    !turn && lastVisible?.role === "assistant"
+      ? [...visible].reverse().find((m) => m.role === "user" && m.seq < lastVisible.seq)
+      : undefined;
 
   return (
     <>
       <ChatHeader title={conversation?.title ?? "Новый диалог"}>
+        <ContextMeter messages={messages} />
         <ConversationUsage messages={messages} />
+        {conversation && <SystemPromptButton conversation={conversation} />}
         {conversation && <ThreadActions conversation={conversation} />}
       </ChatHeader>
 
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl gap-7 px-4 pt-6 pb-10">
+          {conversation?.is_archived && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-2.5 text-sm">
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
+                <Archive className="size-4" /> Диалог в архиве
+              </span>
+              <Button size="sm" variant="outline" onClick={() => void toggleArchive(conversation)}>
+                Вернуть из архива
+              </Button>
+            </div>
+          )}
           {visible.map((m) =>
             m.role === "user" ? (
-              <UserMessage key={m.id} content={m.content} attachments={attachmentsOf(m)} />
+              <UserMessage
+                key={m.id}
+                content={m.content}
+                attachments={attachmentsOf(m)}
+                onEdit={turn ? undefined : (content) => editAndResend(conversationId, m, content)}
+              />
             ) : (
-              <AssistantMessage key={m.id} row={m} />
+              <AssistantMessage
+                key={m.id}
+                row={m}
+                onRegenerate={
+                  regenQuestion && m.id === lastVisible?.id
+                    ? () => void regenerate(conversationId, regenQuestion)
+                    : undefined
+                }
+              />
             ),
           )}
 

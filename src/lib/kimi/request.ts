@@ -4,7 +4,28 @@ export type ApiContentPart =
   { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
 export type ApiMessage =
-  { role: "user"; content: string | ApiContentPart[] } | { role: "assistant"; content: string };
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | ApiContentPart[] }
+  | { role: "assistant"; content: string };
+
+/**
+ * Resolves the system instruction for a turn: the conversation's own instruction wins
+ * (an empty string there means "none"), otherwise the owner's default is used.
+ */
+export function resolveSystemPrompt(
+  conversationPrompt: string | null | undefined,
+  defaultPrompt: string | null | undefined,
+): string {
+  if (conversationPrompt !== null && conversationPrompt !== undefined)
+    return conversationPrompt.trim();
+  return (defaultPrompt ?? "").trim();
+}
+
+/** Puts the system instruction first; no system message when it is empty. */
+export function withSystemPrompt(messages: ApiMessage[], prompt: string): ApiMessage[] {
+  const rest = messages.filter((m) => m.role !== "system");
+  return prompt.trim() ? [{ role: "system", content: prompt.trim() }, ...rest] : rest;
+}
 
 export interface KimiHttpRequest {
   url: string;

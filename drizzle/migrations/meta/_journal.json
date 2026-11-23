@@ -8,6 +8,13 @@
       "when": 1794007170358,
       "tag": "0000_kimi_lab_core",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795464148491,
+      "tag": "0001_instructions_pin_archive",
+      "breakpoints": true
     }
   ]
 }

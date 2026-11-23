@@ -18,7 +18,9 @@ import {
   createConversation,
   deleteConversation,
   deleteEmptyStoppedReplies,
+  deleteMessagesFrom,
   messagesQuery,
+  updateMessageContent,
   saveStoppedReply,
   uploadImage,
   type ConversationRow,
@@ -125,6 +127,10 @@ interface ChatRuntimeValue {
   abandon: (conversationId: string) => void;
   retry: (conversationId: string) => void;
   resend: (conversationId: string, message: MessageRow) => void;
+  /** Drops every reply after this question and asks again. */
+  regenerate: (conversationId: string, question: MessageRow) => Promise<void>;
+  /** Replaces the question text, drops everything after it and asks again. */
+  editAndResend: (conversationId: string, question: MessageRow, content: string) => Promise<void>;
   dismiss: (conversationId: string) => void;
 }
 
@@ -513,6 +519,58 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
     [store, runTurn, queryClient],
   );
 
+  const truncateAfter = useCallback(
+    async (conversationId: string, question: MessageRow) => {
+      await deleteMessagesFrom(conversationId, question.seq, false);
+      queryClient.setQueryData<MessageRow[]>(messagesQuery(conversationId).queryKey, (old) =>
+        (old ?? []).filter((m) => m.seq <= question.seq),
+      );
+    },
+    [queryClient],
+  );
+
+  const regenerate = useCallback(
+    async (conversationId: string, question: MessageRow) => {
+      if (isActive(store.get(conversationId))) return;
+      try {
+        await truncateAfter(conversationId, question);
+      } catch (e) {
+        toast.error("Не удалось подготовить повтор", {
+          description: e instanceof Error ? e.message : undefined,
+        });
+        return;
+      }
+      resend(conversationId, question);
+    },
+    [store, truncateAfter, resend],
+  );
+
+  const editAndResend = useCallback(
+    async (conversationId: string, question: MessageRow, content: string) => {
+      if (isActive(store.get(conversationId))) return;
+      const clean = content.trim();
+      if (!clean && parseStoredAttachments(question.attachments).length === 0) {
+        toast.error("Сообщение не может быть пустым");
+        throw new Error("empty");
+      }
+      try {
+        await truncateAfter(conversationId, question);
+        if (clean !== question.content) await updateMessageContent(question.id, clean);
+      } catch (e) {
+        toast.error("Не удалось изменить сообщение", {
+          description: e instanceof Error ? e.message : undefined,
+        });
+        throw e;
+      }
+      const updated = { ...question, content: clean };
+      queryClient.setQueryData<MessageRow[]>(messagesQuery(conversationId).queryKey, (old) =>
+        (old ?? []).map((m) => (m.id === question.id ? updated : m)),
+      );
+      resend(conversationId, updated);
+    },
+    [store, truncateAfter, resend, queryClient],
+  );
+
   const dismiss = useCallback(
     (conversationId: string) => {
       void refreshConversation(conversationId).then(() => store.delete(conversationId));
@@ -521,8 +579,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
   );
 
   const value = useMemo(
-    () => ({ store, send, stop, abandon, retry, resend, dismiss }),
-    [store, send, stop, abandon, retry, resend, dismiss],
+    () => ({ store, send, stop, abandon, retry, resend, regenerate, editAndResend, dismiss }),
+    [store, send, stop, abandon, retry, resend, regenerate, editAndResend, dismiss],
   );
 
   return <ChatRuntimeContext.Provider value={value}>{children}</ChatRuntimeContext.Provider>;

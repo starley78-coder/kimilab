@@ -22,3 +22,9 @@
 - `Retry-After` countdown on the limit card with automatic resend
 - Paste / drag-and-drop images straight into the message field
 - Pin and archive conversations
+
+## Улучшения (4 фазы) — сделано
+- [x] Вставка/перетаскивание изображений, редактирование, повтор ответа, автоповтор при 429
+- [x] Системные инструкции, текстовые файлы, индикатор контекста, счётчик символов
+- [x] Закрепление, архив, экспорт Markdown/JSON, резервная копия и восстановление
+- [x] Панель кода: строки, перенос, копирование, скачивание
