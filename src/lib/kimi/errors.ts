@@ -172,6 +172,19 @@ export function describeProviderError(
   }
 }
 
+/** Kimi's `exceeded_current_quota_error`: the account balance or token quota is used up. */
+export function balanceExhaustedError(detail?: string): ChatError {
+  return {
+    source: "provider",
+    status: 429,
+    code: "balance_exhausted",
+    title: "Закончился баланс Kimi",
+    message:
+      "Провайдер отклонил запрос: на аккаунте Kimi закончились средства или квота токенов. Пополните баланс на platform.kimi.ai и повторите.",
+    detail: detail || undefined,
+  };
+}
+
 export function connectionError(detail?: string): ChatError {
   return {
     source: "network",

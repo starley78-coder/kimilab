@@ -1,6 +1,7 @@
 import { Settings2 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { BalanceBadge } from "@/components/chat/balance-badge";
 import { useSettings } from "@/components/chat/settings-context";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -18,6 +19,7 @@ export function ChatHeader({ title, children }: { title?: ReactNode; children?: 
         {title && <h1 className="truncate text-sm font-medium">{title}</h1>}
       </div>
       {children}
+      <BalanceBadge />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="quiet" size="icon-sm" onClick={openSettings} aria-label="Настройки">

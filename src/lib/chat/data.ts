@@ -2,7 +2,8 @@ import { queryOptions } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import { getKimiStatus } from "@/lib/kimi.functions";
+import { getKimiBalance, getKimiStatus } from "@/lib/kimi.functions";
+import type { SummaryRecord } from "@/lib/summary.functions";
 import { IMAGE_BUCKET, parseStoredAttachments, type StoredAttachment } from "@/lib/chat/schema";
 import type { ReasoningEffort } from "@/lib/kimi/config";
 import {
@@ -87,6 +88,37 @@ export const kimiStatusQuery = () =>
     queryKey: ["kimi-status"],
     staleTime: 60_000,
     queryFn: () => getKimiStatus(),
+  });
+
+/** Kimi account balance; refreshed every 5 minutes and after each reply. */
+export const kimiBalanceQuery = () =>
+  queryOptions({
+    queryKey: ["kimi-balance"],
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    queryFn: () => getKimiBalance(),
+  });
+
+export const latestSummaryQuery = (conversationId: string) =>
+  queryOptions({
+    queryKey: ["summary", conversationId],
+    queryFn: async (): Promise<SummaryRecord | null> => {
+      const { data, error } = await supabase
+        .from("conversation_summaries")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+      return {
+        ...data,
+        action_items: Array.isArray(data.action_items)
+          ? data.action_items.filter((x): x is string => typeof x === "string")
+          : [],
+      };
+    },
   });
 
 export async function createConversation(id: string, title: string): Promise<ConversationRow> {

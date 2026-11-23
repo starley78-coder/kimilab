@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "events": {
+    "project.conversation_exported": {
+      "event_schema_version": 1,
+      "description": "A conversation was exported or a full backup was downloaded.",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "format"
+        ],
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "json",
+              "backup"
+            ]
+          }
+        }
+      }
+    },
+    "project.file_attached": {
+      "event_schema_version": 1,
+      "description": "Files were uploaded with a sent message (one event per kind).",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "count"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "text"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "project.message_sent": {
+      "event_schema_version": 1,
+      "description": "A chat message was sent to Kimi successfully.",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image_count",
+          "text_file_count",
+          "reasoning_effort",
+          "new_conversation"
+        ],
+        "properties": {
+          "image_count": {
+            "type": "integer"
+          },
+          "text_file_count": {
+            "type": "integer"
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "new_conversation": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "project.reply_regenerated": {
+      "event_schema_version": 1,
+      "description": "The user asked Kimi to regenerate the last reply.",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "project.summary_generated": {
+      "event_schema_version": 1,
+      "description": "A conversation summary with next steps was generated.",
+      "privacy": {
+        "contains_pii": false,
+        "purpose": "product_analytics"
+      },
+      "properties_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action_items",
+          "truncated"
+        ],
+        "properties": {
+          "action_items": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

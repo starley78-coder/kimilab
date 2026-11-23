@@ -21,7 +21,9 @@ import {
   type ConversationRow,
   type MessageRow,
 } from "@/lib/chat/data";
+import { PROMPT_PRESETS } from "@/lib/chat/presets";
 import { formatTokens } from "@/lib/format";
+import { contextUsage } from "@/lib/kimi/balance";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,39 +50,81 @@ export function ContextMeter({ messages }: { messages: MessageRow[] }) {
   const used = lastContextTokens(messages);
   if (used === null) return null;
   const window = status.data?.contextWindow ?? null;
-  const pct = window ? Math.min(100, (used / window) * 100) : null;
+  const ctx = window ? contextUsage(used, window) : null;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="hidden cursor-default items-center gap-2 rounded-full border bg-card px-3 py-1 font-mono text-[0.7rem] tabular-nums text-muted-foreground md:inline-flex">
+        <span
+          className={cn(
+            "hidden cursor-default items-center gap-2 rounded-full border bg-card px-3 py-1 font-mono text-[0.7rem] tabular-nums text-muted-foreground md:inline-flex",
+            ctx?.level === "warn" && "border-warning/50",
+            ctx?.level === "critical" && "border-destructive/50 text-destructive",
+          )}
+        >
           <Gauge className="size-3.5" />
           {formatTokens(used)}
-          {pct !== null && (
+          {ctx && (
             <>
               <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                 <span
                   className={cn(
                     "block h-full rounded-full",
-                    pct > 85 ? "bg-destructive" : pct > 60 ? "bg-warning" : "bg-signal",
+                    ctx.level === "critical"
+                      ? "bg-destructive"
+                      : ctx.level === "warn"
+                        ? "bg-warning"
+                        : "bg-signal",
                   )}
-                  style={{ width: `${Math.max(2, pct)}%` }}
+                  style={{ width: `${Math.max(2, ctx.pct)}%` }}
                 />
               </span>
-              {pct.toFixed(pct < 10 ? 1 : 0)}%
+              {ctx.pct.toFixed(ctx.pct < 10 ? 1 : 0)}%
             </>
           )}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-64 text-xs">
-        <p className="font-medium">Заполненность контекста</p>
+      <TooltipContent side="bottom" className="max-w-72 text-xs">
+        <p className="font-medium">Окно контекста</p>
         <p className="mt-1 opacity-80">
           Последний запрос занял {formatTokens(used)} токенов (вход + ответ, по usage API).
-          {window
-            ? ` Окно: ${formatTokens(window)} токенов.`
-            : " Размер окна не задан — добавьте серверный секрет KIMI_CONTEXT_WINDOW, чтобы видеть процент."}
         </p>
+        {window && ctx ? (
+          <>
+            <p className="mt-1 opacity-80">
+              Осталось ≈ {formatTokens(ctx.remaining)} из {formatTokens(window)}.
+            </p>
+            {ctx.level !== "ok" && (
+              <p className="mt-1 font-medium">
+                Окно почти заполнено: сделайте «Резюме и шаги» и продолжите в новом диалоге.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="mt-1 opacity-80">
+            Размер окна не задан — добавьте серверный секрет KIMI_CONTEXT_WINDOW.
+          </p>
+        )}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/** Fills the instruction field with a ready-made preset (nothing is saved until "Сохранить"). */
+export function PresetPicker({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" aria-label="Пресеты инструкций">
+      <span className="text-xs text-muted-foreground">Пресеты:</span>
+      {PROMPT_PRESETS.map((p) => (
+        <Tooltip key={p.id}>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="outline" size="xs" onClick={() => onPick(p.text)}>
+              {p.title}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-60 text-xs">{p.hint}</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
   );
 }
 
@@ -191,15 +235,18 @@ function SystemPromptDialog({
             )}
           </div>
         ) : (
-          <Textarea
-            autoFocus
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            maxLength={20_000}
-            placeholder="Например: «Ты — ревьюер кода. Указывай на ошибки и предлагай исправления.» Пустое поле — без инструкции."
-            className="max-h-72 min-h-32 text-sm"
-            aria-label="Инструкция диалога"
-          />
+          <div className="grid gap-2">
+            <PresetPicker onPick={setValue} />
+            <Textarea
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              maxLength={20_000}
+              placeholder="Например: «Ты — ревьюер кода. Указывай на ошибки и предлагай исправления.» Пустое поле — без инструкции."
+              className="max-h-72 min-h-32 text-sm"
+              aria-label="Инструкция диалога"
+            />
+          </div>
         )}
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>

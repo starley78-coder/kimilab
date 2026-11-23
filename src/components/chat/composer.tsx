@@ -1,4 +1,6 @@
 import { Eraser, FileText, ImagePlus, Paperclip, Upload, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,7 +43,9 @@ import {
   isTextFileName,
   type TextFile,
 } from "@/lib/chat/text-files";
-import { formatBytes } from "@/lib/format";
+import { kimiStatusQuery } from "@/lib/chat/data";
+import { formatBytes, formatTokens } from "@/lib/format";
+import { estimateDraftTokens } from "@/lib/kimi.functions";
 import {
   MODEL_DISPLAY_NAME,
   REASONING_EFFORTS,
@@ -181,6 +185,31 @@ function SubmitControl({
   );
 }
 
+/** Kimi tokenizer estimate of the draft text, debounced; null while unknown. */
+function useDraftEstimate(content: string): number | null {
+  const status = useQuery(kimiStatusQuery());
+  const estimate = useServerFn(estimateDraftTokens);
+  const [result, setResult] = useState<{ text: string; tokens: number } | null>(null);
+  const enabled = !!status.data?.accountApi;
+  useEffect(() => {
+    const text = content.trim();
+    if (!enabled || !text || text.length > 400_000) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      estimate({ data: { text } })
+        .then((r) => {
+          if (!cancelled && r.tokens !== null) setResult({ text, tokens: r.tokens });
+        })
+        .catch(() => undefined);
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [content, enabled, estimate]);
+  return result && result.text === content.trim() ? result.tokens : null;
+}
+
 function ComposerInner({
   conversationId,
   autoFocusKey,
@@ -199,6 +228,10 @@ function ComposerInner({
   const controller = usePromptInputController();
   const contentLength = buildMessageContent(controller.textInput.value, textFiles).length;
   const tooLong = contentLength > MAX_MESSAGE_CHARS;
+  const [effort] = useReasoningEffort();
+  const draftTokens = useDraftEstimate(
+    contentLength > 0 ? buildMessageContent(controller.textInput.value, textFiles) : "",
+  );
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -345,6 +378,18 @@ function ComposerInner({
         text: buildMessageContent(message.text, textFiles),
         files: message.files,
       });
+      const images = message.files.length;
+      const texts = textFiles.length;
+      window.__lovableEvents?.track?.("project.message_sent", {
+        image_count: images,
+        text_file_count: texts,
+        reasoning_effort: effort,
+        new_conversation: conversationId === null,
+      });
+      if (images > 0)
+        window.__lovableEvents?.track?.("project.file_attached", { kind: "image", count: images });
+      if (texts > 0)
+        window.__lovableEvents?.track?.("project.file_attached", { kind: "text", count: texts });
       setTextFiles([]);
     } finally {
       setSubmitting(false);
@@ -462,6 +507,14 @@ function ComposerInner({
                 }
               >
                 {contentLength.toLocaleString("ru-RU")} симв.
+              </span>
+            )}
+            {contentLength > 0 && draftTokens !== null && (
+              <span
+                className="hidden px-1 font-mono text-[0.7rem] tabular-nums text-muted-foreground sm:inline"
+                title="Оценка токенизатора Kimi для текста черновика (без истории и картинок). Фактический расход — в usage ответа."
+              >
+                ≈{formatTokens(draftTokens)} ток.
               </span>
             )}
             <ClearButton hasFiles={textFiles.length > 0} onClearFiles={() => setTextFiles([])} />

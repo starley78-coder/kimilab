@@ -46,3 +46,7 @@ use the editor.
 - **Text files** are inlined into message content as `<file name="…">` blocks (`src/lib/chat/text-files.ts`), not stored in the bucket. Why: the model reads them as text and history replays them.
 - **Context meter** uses only API usage of the last reply; a percentage appears only when `KIMI_CONTEXT_WINDOW` is set. Why: no invented limits.
 - **Backups** (`src/lib/chat/export.ts`) are versioned JSON without image files; import always creates new conversations. Why: never overwrite existing data.
+- **Account API** (balance, token estimate) lives in `src/lib/kimi/balance.ts` and is called only for the official Moonshot base URL. Why: other gateways do not document it.
+- **Summaries** use Lovable AI Gateway (`src/lib/summary/*`), never the Kimi provider, and are stored in `conversation_summaries`. Why: separate billing and model choice from the chat.
+- **Instruction presets** live in `src/lib/chat/presets.ts`; picking one only fills the field. Why: nothing is saved without the owner pressing Save.
+- **Analytics** use `window.__lovableEvents?.track?.` at call sites with schemas in `.lovable/events.json`. Why: one queryable pipeline.

@@ -12,6 +12,7 @@ import { AppSidebar } from "@/components/chat/app-sidebar";
 import { ChatRuntimeProvider } from "@/components/chat/chat-runtime";
 import { CodeDrawerProvider } from "@/components/chat/code-drawer";
 import { SettingsProvider } from "@/components/chat/settings-context";
+import { SummaryProvider } from "@/components/chat/summary-dialog";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -118,12 +119,14 @@ function ChatLayout() {
     <ChatRuntimeProvider userId={user.id}>
       <SettingsProvider userId={user.id}>
         <CodeDrawerProvider>
+          <SummaryProvider>
           <SidebarProvider>
             <AppSidebar email={email} />
             <SidebarInset className="flex h-dvh min-h-0 flex-col overflow-hidden">
               <Outlet />
             </SidebarInset>
           </SidebarProvider>
+          </SummaryProvider>
         </CodeDrawerProvider>
       </SettingsProvider>
     </ChatRuntimeProvider>

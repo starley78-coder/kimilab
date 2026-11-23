@@ -39,6 +39,12 @@ export function MessageUsage({ usage }: { usage: Usage | null }) {
               <span className="text-right font-mono">{formatTokens(usage.reasoning_tokens)}</span>
             </>
           )}
+          {usage.cached_tokens != null && usage.cached_tokens > 0 && (
+            <>
+              <span>из кэша (дешевле)</span>
+              <span className="text-right font-mono">{formatTokens(usage.cached_tokens)}</span>
+            </>
+          )}
           {usage.total_tokens !== null && (
             <>
               <span>Всего</span>
@@ -60,6 +66,7 @@ export function usageFromRow(row: MessageRow): Usage | null {
     completion_tokens: row.completion_tokens,
     reasoning_tokens: row.reasoning_tokens,
     total_tokens: row.total_tokens,
+    cached_tokens: row.cached_tokens,
   };
 }
 

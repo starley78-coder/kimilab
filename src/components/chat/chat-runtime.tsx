@@ -158,6 +158,7 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: messagesQuery(conversationId).queryKey }),
         queryClient.invalidateQueries({ queryKey: conversationsQuery().queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["kimi-balance"] }),
       ]);
     },
     [queryClient],
@@ -540,6 +541,7 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         });
         return;
       }
+      window.__lovableEvents?.track?.("project.reply_regenerated", {});
       resend(conversationId, question);
     },
     [store, truncateAfter, resend],

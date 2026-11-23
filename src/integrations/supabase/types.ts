@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      conversation_summaries: {
+        Row: {
+          action_items: Json
+          conversation_id: string
+          created_at: string
+          id: string
+          messages_used: number
+          model: string
+          summary: string
+          truncated: boolean
+          user_id: string
+        }
+        Insert: {
+          action_items?: Json
+          conversation_id: string
+          created_at?: string
+          id?: string
+          messages_used?: number
+          model: string
+          summary: string
+          truncated?: boolean
+          user_id: string
+        }
+        Update: {
+          action_items?: Json
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          messages_used?: number
+          model?: string
+          summary?: string
+          truncated?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_summaries_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           created_at: string
@@ -50,6 +94,7 @@ export type Database = {
       messages: {
         Row: {
           attachments: Json
+          cached_tokens: number | null
           completion_tokens: number | null
           content: string
           conversation_id: string
@@ -68,6 +113,7 @@ export type Database = {
         }
         Insert: {
           attachments?: Json
+          cached_tokens?: number | null
           completion_tokens?: number | null
           content?: string
           conversation_id: string
@@ -86,6 +132,7 @@ export type Database = {
         }
         Update: {
           attachments?: Json
+          cached_tokens?: number | null
           completion_tokens?: number | null
           content?: string
           conversation_id?: string

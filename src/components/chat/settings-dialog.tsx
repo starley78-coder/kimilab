@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Download,
+  LifeBuoy,
   Loader2,
   Monitor,
   Moon,
@@ -14,7 +15,11 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { Link } from "@tanstack/react-router";
+
+import { formatUsd } from "@/components/chat/balance-badge";
 import { ErrorCard } from "@/components/chat/error-card";
+import { PresetPicker } from "@/components/chat/thread-tools";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   conversationsQuery,
   importBackup,
+  kimiBalanceQuery,
   kimiStatusQuery,
   loadEverything,
   saveDefaultSystemPrompt,
@@ -141,6 +147,7 @@ function DefaultPromptSection({ userId, open }: { userId: string; open: boolean 
       title="Системная инструкция по умолчанию"
       hint="Отправляется первой (role: system) во всех диалогах, где не задана своя инструкция."
     >
+      <PresetPicker onPick={setValue} />
       <Textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -162,6 +169,23 @@ function DefaultPromptSection({ userId, open }: { userId: string; open: boolean 
   );
 }
 
+function BalanceValue() {
+  const q = useQuery(kimiBalanceQuery());
+  if (q.isPending) return <Loader2 className="inline size-3.5 animate-spin" />;
+  const r = q.data;
+  if (!r?.supported) return <span className="text-muted-foreground">недоступен у провайдера</span>;
+  if (!r.balance) return <span className="text-destructive">{r.error?.title ?? "не получен"}</span>;
+  return (
+    <span className="font-mono text-xs">
+      {formatUsd(r.balance.available)}
+      <span className="text-muted-foreground">
+        {" "}
+        (ваучеры {formatUsd(r.balance.voucher)}, счёт {formatUsd(r.balance.cash)})
+      </span>
+    </span>
+  );
+}
+
 function DataSection() {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -175,6 +199,7 @@ function DataSection() {
         JSON.stringify(buildBackup(conversations, messages), null, 2),
         "application/json",
       );
+      window.__lovableEvents?.track?.("project.conversation_exported", { format: "backup" });
       return { conversations: conversations.length, messages: messages.length };
     },
     onSuccess: (r) =>
@@ -264,6 +289,13 @@ export function SettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <Link
+          to="/help"
+          onClick={() => onOpenChange(false)}
+          className="inline-flex items-center gap-1.5 text-sm text-signal hover:underline"
+        >
+          <LifeBuoy className="size-4" /> Помощь и советы
+        </Link>
         <div className="grid gap-6">
           <Section title="Модель">
             <div className="rounded-xl border bg-card px-4 py-2">
@@ -279,6 +311,9 @@ export function SettingsDialog({
                 ) : (
                   <span className="text-muted-foreground">не задано</span>
                 )}
+              </Row>
+              <Row label="Баланс">
+                <BalanceValue />
               </Row>
               <Row label="Провайдер">{s?.providerLabel ?? "—"}</Row>
               <Row label="Адрес API">
@@ -386,9 +421,11 @@ export function SettingsDialog({
                 рассчитывается.
               </li>
               <li>
-                Размер контекстного окна показывается, только если он задан в серверном секрете
-                KIMI_CONTEXT_WINDOW.
+                Размер окна контекста берётся из серверного секрета KIMI_CONTEXT_WINDOW (для Kimi
+                K3.1 Pro по документации — 1 000 000 токенов).
               </li>
+              <li>Баланс берётся из API Kimi и доступен только для официального API Moonshot.</li>
+              <li>«Резюме и шаги» делает Lovable AI и тратит кредиты Lovable, а не баланс Kimi.</li>
               <li>
                 Изображения хранятся в приватном хранилище, в истории сохраняется только текст и
                 ссылки на файлы.

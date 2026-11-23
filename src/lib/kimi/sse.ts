@@ -55,6 +55,8 @@ export interface Usage {
   completion_tokens: number | null;
   reasoning_tokens: number | null;
   total_tokens: number | null;
+  /** Input tokens served from Kimi's context cache (prompt_tokens_details.cached_tokens). */
+  cached_tokens?: number | null;
 }
 
 function num(value: unknown): number | null {
@@ -71,6 +73,10 @@ export function normalizeUsage(raw: unknown): Usage | null {
     completion_tokens: num(u["completion_tokens"] ?? u["output_tokens"]),
     reasoning_tokens: num(details["reasoning_tokens"] ?? u["reasoning_tokens"]),
     total_tokens: num(u["total_tokens"]),
+    cached_tokens: num(
+      ((u["prompt_tokens_details"] ?? {}) as Record<string, unknown>)["cached_tokens"] ??
+        u["cached_tokens"],
+    ),
   };
   if (
     usage.prompt_tokens === null &&

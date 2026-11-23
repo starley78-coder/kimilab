@@ -192,7 +192,18 @@ describe("token usage", () => {
       completion_tokens: 45,
       reasoning_tokens: 30,
       total_tokens: 165,
+      cached_tokens: null,
     });
+  });
+
+  it("reads cached input tokens from prompt_tokens_details", () => {
+    expect(
+      normalizeUsage({
+        prompt_tokens: 1000,
+        completion_tokens: 10,
+        prompt_tokens_details: { cached_tokens: 768 },
+      })?.cached_tokens,
+    ).toBe(768);
   });
 
   it("reads usage that Moonshot puts inside the final choice", () => {

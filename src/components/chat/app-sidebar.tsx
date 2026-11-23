@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   Archive,
   Check,
+  LifeBuoy,
   ChevronRight,
   ChevronsUpDown,
   LogOut,
@@ -223,6 +224,11 @@ function AccountMenu({ email }: { email: string }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={openSettings}>
           <Settings2 /> Настройки
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/help">
+            <LifeBuoy /> Помощь
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>

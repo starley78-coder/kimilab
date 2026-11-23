@@ -12,9 +12,11 @@ import {
   parseStoredAttachments,
   type ChatRequestBody,
 } from "@/lib/chat/schema";
+import { isQuotaErrorBody } from "@/lib/kimi/balance";
 import { resolveKimiConfig, type KimiConfig } from "@/lib/kimi/config";
 import {
   appError,
+  balanceExhaustedError,
   connectionError,
   describeProviderError,
   extractProviderMessage,
@@ -189,6 +191,7 @@ function retryAfterSeconds(res: Response): number | undefined {
 async function providerFailure(res: Response, secret: string): Promise<ChatError> {
   const body = await res.text().catch(() => "");
   const detail = sanitizeProviderText(extractProviderMessage(body), [secret]);
+  if (isQuotaErrorBody(body)) return balanceExhaustedError(detail);
   return describeProviderError(res.status, detail, retryAfterSeconds(res));
 }
 
@@ -420,6 +423,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
           completion_tokens: usage?.completion_tokens ?? null,
           reasoning_tokens: usage?.reasoning_tokens ?? null,
           total_tokens: usage?.total_tokens ?? null,
+          cached_tokens: usage?.cached_tokens ?? null,
         },
         { onConflict: "id", ignoreDuplicates: true },
       )

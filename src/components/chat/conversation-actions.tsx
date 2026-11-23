@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   FileDown,
   FileJson,
+  ListChecks,
   Pencil,
   Pin,
   PinOff,
@@ -12,6 +13,7 @@ import {
 import { useCallback } from "react";
 import { toast } from "sonner";
 
+import { useSummary } from "@/components/chat/summary-dialog";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
   conversationQuery,
@@ -77,6 +79,9 @@ export function useConversationActions() {
           "application/json",
         );
       }
+      window.__lovableEvents?.track?.("project.conversation_exported", {
+        format: format === "md" ? "markdown" : "json",
+      });
     } catch (e) {
       toast.error("Экспорт не удался", { description: e instanceof Error ? e.message : undefined });
     }
@@ -112,8 +117,13 @@ export function ConversationMenuItems({
   onDelete: () => void;
 }) {
   const { togglePin, toggleArchive, exportAs } = useConversationActions();
+  const { openSummary } = useSummary();
   return (
     <>
+      <DropdownMenuItem onSelect={() => openSummary(conversation)}>
+        <ListChecks /> Резюме и шаги
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
       <DropdownMenuItem onSelect={onRename}>
         <Pencil /> Переименовать
       </DropdownMenuItem>

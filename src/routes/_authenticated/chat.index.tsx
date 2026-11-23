@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowUpRight, KeyRound } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight, KeyRound, Lightbulb } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { ChatHeader } from "@/components/chat/chat-header";
@@ -45,7 +46,16 @@ const STARTERS = [
   },
 ];
 
+const TIPS = [
+  "Ctrl+V вставляет скриншот прямо в сообщение, файлы можно перетащить в окно.",
+  "Low отвечает быстрее и дешевле, Max — для сложного кода и математики.",
+  "В меню диалога есть «Резюме и шаги» — краткий итог и список дел.",
+  "Значок с кошельком в шапке показывает баланс Kimi.",
+  "Своя инструкция для диалога — кнопка со свитком в шапке.",
+];
+
 function NewChatPage() {
+  const tip = TIPS[new Date().getMinutes() % TIPS.length];
   const status = useQuery(kimiStatusQuery());
   const { send } = useChatRuntime();
   const { openSettings } = useSettings();
@@ -83,7 +93,17 @@ function NewChatPage() {
             </div>
           )}
 
-          <div className="mt-10 grid gap-2.5 sm:grid-cols-2">
+          <p className="mx-auto mt-6 flex max-w-xl items-start gap-2 text-xs text-muted-foreground">
+            <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-signal" />
+            <span>
+              Совет: {tip}{" "}
+              <Link to="/help" className="text-signal hover:underline">
+                Все советы
+              </Link>
+            </span>
+          </p>
+
+          <div className="mt-8 grid gap-2.5 sm:grid-cols-2">
             {STARTERS.map((s) => (
               <button
                 key={s.title}
