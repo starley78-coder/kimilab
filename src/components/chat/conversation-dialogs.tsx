@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -39,6 +39,7 @@ export function RenameConversationDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [title, setTitle] = useState("");
 
   useEffect(() => {
@@ -55,6 +56,8 @@ export function RenameConversationDialog({
       queryClient.setQueryData<ConversationRow | null>(["conversation", input.id], (old) =>
         old ? { ...old, title: clean } : old,
       );
+      // Re-run the page loader so the browser tab title follows the new name.
+      void router.invalidate();
       onOpenChange(false);
     },
     onError: (e) => toast.error("Не удалось переименовать", { description: e.message }),

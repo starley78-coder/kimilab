@@ -28,3 +28,17 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Kimi Lab architecture rules
+
+- **Server boundary.** Every Kimi request goes through the server route `src/routes/api/chat.ts` (logic in `src/lib/chat-stream.server.ts`) or a server function in `src/lib/kimi.functions.ts`; browser code never calls the provider. Why: the API key must exist only in server secrets. (TanStack server routes are this stack's replacement for Supabase Edge Functions.)
+- **Provider config.** Base URL, model ID and key are resolved only in `src/lib/kimi/config.ts` from `KIMI_API_KEY`, `KIMI_API_BASE_URL`, `KIMI_MODEL_ID`, and request bodies are built only in `src/lib/kimi/request.ts`. Never add a fallback to another model. Why: the owner wants the real model or the real error.
+- **Reasoning stays on the server.** `reasoning_content` is dropped while parsing the provider stream (`src/lib/kimi/sse.ts`); it is never sent to the browser or stored. Why: only the final answer may be shown.
+- **Errors.** Provider failures are mapped and scrubbed in `src/lib/kimi/errors.ts` before leaving the server. Why: no key or account identifier may reach the browser.
+- **Idempotent turns.** The browser generates the user and assistant message IDs; the server and browser write messages with upsert-ignore on those IDs. Why: retries and Stop must not duplicate rows.
+- **Stop.** The browser aborts its request and stores a `stopped` assistant row under the agreed ID; the server polls for that row and aborts the provider call. Why: the runtime does not reliably report a closed connection.
+- **Images.** Files live in the private `chat-images` bucket under `<userId>/<conversationId>/`; message rows keep only attachment metadata. Why: no base64 in the database.
+- **Access.** One owner per workspace via `public.user_roles` and `claim_workspace_access()`; other accounts get no data. Why: personal app.
+- **Rate limit.** `consume_chat_quota()` runs on the server before each provider request. Why: atomic and not bypassable from the browser.
+- **Chat UI.** Compose the thread, messages and composer from `src/components/ai-elements`; app-specific pieces live in `src/components/chat`. Why: one consistent chat surface.
+- **Rules are tested** in `src/test/kimi-rules.test.ts`; extend it when a provider, error or effort rule changes.
