@@ -42,6 +42,7 @@ export function buildKimiRequest(
   messages: ApiMessage[],
   effort: ReasoningEffort,
   stream: boolean,
+  extra?: Record<string, unknown>,
 ): KimiHttpRequest {
   const body: Record<string, unknown> = {
     model: config.modelId,
@@ -51,6 +52,7 @@ export function buildKimiRequest(
     stream,
   };
   if (stream) body["stream_options"] = { include_usage: true };
+  if (extra) Object.assign(body, extra);
   return {
     url: chatCompletionsUrl(config),
     headers: {

@@ -1,4 +1,4 @@
-import { Eraser, FileText, ImagePlus, Paperclip, Upload, X } from "lucide-react";
+import { Eraser, FileText, Globe, ImagePlus, Paperclip, Upload, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -229,6 +229,7 @@ function ComposerInner({
   const contentLength = buildMessageContent(controller.textInput.value, textFiles).length;
   const tooLong = contentLength > MAX_MESSAGE_CHARS;
   const [effort] = useReasoningEffort();
+  const [searchEnabled, setSearchEnabled] = useState(false);
   const draftTokens = useDraftEstimate(
     contentLength > 0 ? buildMessageContent(controller.textInput.value, textFiles) : "",
   );
@@ -377,6 +378,7 @@ function ComposerInner({
         conversationId,
         text: buildMessageContent(message.text, textFiles),
         files: message.files,
+        searchEnabled,
       });
       const images = message.files.length;
       const texts = textFiles.length;
@@ -385,6 +387,7 @@ function ComposerInner({
         text_file_count: texts,
         reasoning_effort: effort,
         new_conversation: conversationId === null,
+        search_enabled: searchEnabled,
       });
       if (images > 0)
         window.__lovableEvents?.track?.("project.file_attached", { kind: "image", count: images });
@@ -477,6 +480,20 @@ function ComposerInner({
         />
         <PromptInputFooter className="px-2 pb-2">
           <PromptInputTools>
+            <PromptInputButton
+              tooltip="Разрешить модели искать актуальную информацию в интернете"
+              aria-pressed={searchEnabled}
+              aria-label="Поиск"
+              onClick={() => setSearchEnabled((v) => !v)}
+              className={
+                searchEnabled
+                  ? "gap-1.5 border border-signal/40 bg-signal/15 px-2 text-signal hover:bg-signal/20"
+                  : "gap-1.5 px-2 text-muted-foreground"
+              }
+            >
+              <Globe className="size-4" />
+              <span className="text-xs font-medium">Поиск</span>
+            </PromptInputButton>
             <AttachButton />
             <PromptInputButton
               tooltip={`Прикрепить текстовый файл или код (до ${formatBytes(MAX_TEXT_FILE_BYTES)})`}

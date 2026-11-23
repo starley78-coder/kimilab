@@ -151,7 +151,9 @@ export type ChatStreamEvent =
       model: string;
       provider: string;
     }
-  | { type: "phase"; phase: "thinking" | "answering" | "full" }
+  | { type: "phase"; phase: "thinking" | "answering" | "full" | "analyzing" }
+  | { type: "tool"; run: import("@/lib/tools/types").ToolRunStatus }
+  | { type: "sources"; sources: import("@/lib/tools/types").SourceReference[] }
   | { type: "delta"; text: string }
   | { type: "usage"; usage: Usage }
   | {

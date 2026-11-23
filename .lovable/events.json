@@ -87,6 +87,9 @@
           },
           "new_conversation": {
             "type": "boolean"
+          },
+          "search_enabled": {
+            "type": "boolean"
           }
         }
       }

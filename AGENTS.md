@@ -50,3 +50,5 @@ use the editor.
 - **Summaries** use Lovable AI Gateway (`src/lib/summary/*`), never the Kimi provider, and are stored in `conversation_summaries`. Why: separate billing and model choice from the chat.
 - **Instruction presets** live in `src/lib/chat/presets.ts`; picking one only fills the field. Why: nothing is saved without the owner pressing Save.
 - **Analytics** use `window.__lovableEvents?.track?.` at call sites with schemas in `.lovable/events.json`. Why: one queryable pipeline.
+- **Agent tools.** Tools live in `src/lib/tools` (types, registry, bounded loop, search adapter, SSRF-guarded `open_url`); the chat server registers them only when the request has `search_enabled: true`. Sources shown in the UI come only from real tool results and are stored on the assistant message (`sources`, `tool_runs`). Why: no invented links, and new tools (e.g. agent_task) plug into the same registry.
+- **Search provider** is picked by server secrets `SEARCH_PROVIDER` (tavily | brave) and `SEARCH_API_KEY`; missing key → "Поиск не настроен", never a fake result. Why: provider-independent chat and honest failures.

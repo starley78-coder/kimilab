@@ -35,6 +35,8 @@ export const chatRequestSchema = z
     content: z.string().max(MAX_MESSAGE_CHARS),
     attachments: z.array(storedAttachmentSchema).max(MAX_IMAGES_PER_MESSAGE).default([]),
     reasoningEffort: z.enum(REASONING_EFFORTS),
+    /** Web search tools for this turn only; off unless explicitly requested. */
+    search_enabled: z.boolean().default(false),
   })
   .refine((v) => v.content.trim().length > 0 || v.attachments.length > 0, {
     message: "Сообщение пустое",

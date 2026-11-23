@@ -41,9 +41,10 @@ import type { ReasoningEffort } from "@/lib/kimi/config";
 import type { ChatError } from "@/lib/kimi/errors";
 import type { Usage } from "@/lib/kimi/sse";
 import { readReasoningEffort } from "@/lib/preferences";
+import type { SourceReference, ToolRunStatus } from "@/lib/tools/types";
 
 export type TurnStatus = "uploading" | "submitted" | "streaming" | "error" | "finalizing";
-export type TurnPhase = "connecting" | "thinking" | "answering" | "full";
+export type TurnPhase = "connecting" | "thinking" | "answering" | "full" | "analyzing";
 
 export interface LiveTurn {
   conversationId: string;
@@ -69,6 +70,9 @@ export interface LiveTurn {
   started: boolean;
   /** Stop was pressed before the server confirmed the start; it is applied as soon as it does. */
   stopRequested: boolean;
+  /** Real tool runs and sources reported by the server for this reply only. */
+  toolRuns: ToolRunStatus[];
+  sources: SourceReference[];
 }
 
 class TurnStore {
@@ -117,6 +121,7 @@ export interface SendInput {
   conversationId: string | null;
   text: string;
   files: FileUIPart[];
+  searchEnabled?: boolean;
 }
 
 interface ChatRuntimeValue {
@@ -179,6 +184,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         committed: false,
         started: false,
         stopRequested: false,
+        toolRuns: [],
+        sources: [],
         startedAt: Date.now(),
         phaseStartedAt: Date.now(),
       });
@@ -212,6 +219,14 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
                   phase: "answering",
                   text: t.text + event.text,
                 }));
+                break;
+              case "tool":
+                store.patch(conversationId, (t) => ({
+                  toolRuns: [...t.toolRuns.filter((r) => r.id !== event.run.id), event.run],
+                }));
+                break;
+              case "sources":
+                store.patch(conversationId, { sources: event.sources });
                 break;
               case "usage":
                 store.patch(conversationId, { usage: event.usage });
@@ -263,7 +278,7 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
   );
 
   const send = useCallback(
-    async ({ conversationId: existingId, text, files }: SendInput) => {
+    async ({ conversationId: existingId, text, files, searchEnabled = false }: SendInput) => {
       const content = text.trim();
       if (!content && files.length === 0) return;
       if (files.length > MAX_IMAGES_PER_MESSAGE) {
@@ -335,6 +350,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         committed: false,
         started: false,
         stopRequested: false,
+        toolRuns: [],
+        sources: [],
       });
 
       // Existing thread: show the message right away while images upload.
@@ -392,6 +409,7 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         content,
         attachments,
         reasoningEffort: effort,
+        search_enabled: searchEnabled,
       });
     },
     [store, queryClient, navigate, runTurn, userId],
@@ -501,6 +519,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         committed: false,
         started: false,
         stopRequested: false,
+        toolRuns: [],
+        sources: [],
       });
       // A reply that was stopped before any text arrived is only a marker: replace it.
       void deleteEmptyStoppedReplies(conversationId)
@@ -515,6 +535,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         content: message.content,
         attachments,
         reasoningEffort: readReasoningEffort(),
+        // keep the original choice of the question being resent
+        search_enabled: message.search_enabled,
       });
     },
     [store, runTurn, queryClient],

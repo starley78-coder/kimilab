@@ -5,7 +5,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
 import {
   IMAGE_BUCKET,
   chatRequestSchema,
@@ -37,6 +37,16 @@ import {
   type ChatStreamEvent,
   type Usage,
 } from "@/lib/kimi/sse";
+
+import {
+  DEFAULT_LIMITS,
+  SEARCH_SYSTEM_PROMPT,
+  runToolLoop,
+  type ModelStep,
+} from "@/lib/tools/loop";
+import { buildRegistry, openUrlTool, webSearchTool } from "@/lib/tools/registry";
+import { resolveSearchProvider, type SearchProvider } from "@/lib/tools/search-provider";
+import type { SourceReference, ToolCall, ToolRunStatus } from "@/lib/tools/types";
 
 type DB = SupabaseClient<Database>;
 
@@ -164,6 +174,83 @@ function callKimi(
     body: JSON.stringify(req.body),
     signal,
   });
+}
+
+/** One non-streamed Kimi step for the tool loop. The full assistant message (incl. hidden
+ *  reasoning) is returned only so it can be sent back to Kimi; it never reaches the browser. */
+async function callKimiStep(
+  config: KimiConfig,
+  messages: Record<string, unknown>[],
+  tools: unknown[] | null,
+  effort: ChatRequestBody["reasoningEffort"],
+  signal: AbortSignal,
+): Promise<ModelStep> {
+  const req = buildKimiRequest(
+    config,
+    messages as unknown as ApiMessage[],
+    effort,
+    false,
+    tools ? { tools } : undefined,
+  );
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(req.url, {
+      method: "POST",
+      headers: req.headers,
+      body: JSON.stringify(req.body),
+      signal,
+    });
+    if (!res.ok) {
+      const failure = await providerFailure(res, config.apiKey);
+      if (
+        failure.status === 429 &&
+        attempt < MAX_CONNECT_ATTEMPTS &&
+        (failure.retryAfter ?? Infinity) <= MAX_AUTO_RETRY_AFTER_S
+      ) {
+        await sleep(Math.max(1, failure.retryAfter ?? 1) * 1000, signal);
+        continue;
+      }
+      throw new ProviderStepError(failure);
+    }
+    const json = (await res.json()) as Record<string, unknown>;
+    const info = parseCompletionChunk(json);
+    if (info.errorMessage)
+      throw new ProviderStepError(
+        describeProviderError(502, sanitizeProviderText(info.errorMessage, [config.apiKey])),
+      );
+    const choice = (Array.isArray(json["choices"]) ? json["choices"][0] : null) as Record<
+      string,
+      unknown
+    > | null;
+    const message = (choice?.["message"] ?? {}) as Record<string, unknown>;
+    const rawCalls = Array.isArray(message["tool_calls"])
+      ? (message["tool_calls"] as Record<string, unknown>[])
+      : [];
+    const toolCalls: ToolCall[] = rawCalls.flatMap((c) => {
+      const fn = (c["function"] ?? {}) as Record<string, unknown>;
+      return typeof c["id"] === "string" && typeof fn["name"] === "string"
+        ? [
+            {
+              id: c["id"],
+              name: fn["name"],
+              arguments: typeof fn["arguments"] === "string" ? fn["arguments"] : "{}",
+            },
+          ]
+        : [];
+    });
+    return {
+      message: { ...message, role: "assistant" },
+      content: info.content,
+      toolCalls,
+      finishReason: info.finishReason,
+      usage: info.usage,
+    };
+  }
+}
+
+class ProviderStepError extends Error {
+  constructor(public chatError: ChatError) {
+    super(chatError.message);
+  }
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -307,6 +394,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
       role: "user",
       content: body.content,
       attachments: body.attachments,
+      search_enabled: body.search_enabled,
     },
     { onConflict: "id", ignoreDuplicates: true },
   );
@@ -336,6 +424,28 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     );
   }
   const config = resolved.config;
+
+  // 6b. Search tools exist only when the user enabled them for this turn
+  let searchProvider: SearchProvider | null = null;
+  if (body.search_enabled) {
+    const sr = resolveSearchProvider({
+      SEARCH_PROVIDER: process.env["SEARCH_PROVIDER"],
+      SEARCH_API_KEY: process.env["SEARCH_API_KEY"],
+    });
+    if (!sr.ok) {
+      return errorResponse(
+        appError(
+          503,
+          "search_not_configured",
+          "Поиск не настроен",
+          sr.reason === "unknown_provider"
+            ? "SEARCH_PROVIDER должен быть tavily или brave."
+            : "Добавьте серверный секрет SEARCH_API_KEY или выключите «Поиск» и отправьте снова.",
+        ),
+      );
+    }
+    searchProvider = sr.provider;
+  }
 
   // 7. Server-side rate limit
   const { data: quota, error: quotaError } = await supabase.rpc("consume_chat_quota");
@@ -405,6 +515,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     status: "complete" | "stopped",
     usage: Usage | null,
     finishReason: string | null,
+    search?: { sources: SourceReference[]; toolRuns: ToolRunStatus[] },
   ) => {
     const { data, error } = await supabase
       .from("messages")
@@ -424,6 +535,9 @@ export async function handleChatRequest(request: Request): Promise<Response> {
           reasoning_tokens: usage?.reasoning_tokens ?? null,
           total_tokens: usage?.total_tokens ?? null,
           cached_tokens: usage?.cached_tokens ?? null,
+          search_enabled: body.search_enabled,
+          sources: (search?.sources ?? []) as unknown as Json,
+          tool_runs: (search?.toolRuns ?? []) as unknown as Json,
         },
         { onConflict: "id", ignoreDuplicates: true },
       )
@@ -509,109 +623,162 @@ export async function handleChatRequest(request: Request): Promise<Response> {
       let finishReason: string | null = null;
       let phase: "thinking" | "answering" | null = null;
       let streamError: ChatError | null = null;
+      let sources: SourceReference[] = [];
+      let toolRuns: ToolRunStatus[] = [];
 
       try {
-        // --- Connect (streaming first; plain request if the provider rejects streaming) ---
-        let mode: "stream" | "full" = "stream";
-        let upstream: Response | null = null;
-        armIdle(CONNECT_TIMEOUT_MS);
-        for (let attempt = 1; ; attempt++) {
-          const res = await callKimi(
-            config,
+        if (searchProvider) {
+          armIdle(FULL_RESPONSE_TIMEOUT_MS);
+          const loopMessages = withSystemPrompt(
             apiMessages,
-            body.reasoningEffort,
-            mode === "stream",
-            upstreamAbort.signal,
-          );
-          if (res.ok) {
-            upstream = res;
-            break;
-          }
-          const failure = await providerFailure(res, config.apiKey);
-          // Short provider-side throttling (e.g. the previous request is still closing): wait and try again.
-          if (
-            failure.status === 429 &&
-            attempt < MAX_CONNECT_ATTEMPTS &&
-            (failure.retryAfter ?? Infinity) <= MAX_AUTO_RETRY_AFTER_S
-          ) {
-            await sleep(Math.max(1, failure.retryAfter ?? 1) * 1000, upstreamAbort.signal);
-            continue;
-          }
-          if (mode === "stream" && failure.status === 400 && /stream/i.test(failure.detail ?? "")) {
-            mode = "full";
-            continue;
-          }
-          streamError = failure;
-          break;
-        }
-
-        if (upstream) {
-          const contentType = upstream.headers.get("content-type") ?? "";
-          if (mode === "stream" && !contentType.includes("text/event-stream")) mode = "full";
-
-          if (mode === "full" || !upstream.body) {
-            armIdle(FULL_RESPONSE_TIMEOUT_MS);
-            send({ type: "phase", phase: "full" });
-            const info = parseCompletionChunk((await upstream.json()) as unknown);
-            if (info.errorMessage) {
-              streamError = describeProviderError(
-                502,
-                sanitizeProviderText(info.errorMessage, [config.apiKey]),
-              );
-            }
-            text = info.content;
-            usage = info.usage;
-            finishReason = info.finishReason;
+            [SEARCH_SYSTEM_PROMPT, apiMessages[0]?.role === "system" ? apiMessages[0].content : ""]
+              .filter(Boolean)
+              .join("\n\n"),
+          ) as unknown as Record<string, unknown>[];
+          try {
+            const result = await runToolLoop({
+              messages: loopMessages,
+              tools: buildRegistry([webSearchTool(searchProvider), openUrlTool()]),
+              limits: DEFAULT_LIMITS,
+              signal: upstreamAbort.signal,
+              callModel: (m, tools) =>
+                callKimiStep(config, m, tools, body.reasoningEffort, upstreamAbort.signal),
+              onModelStep: (i) => {
+                if (i > 0) send({ type: "phase", phase: "analyzing" });
+              },
+              onStatus: (run) => {
+                toolRuns = [...toolRuns.filter((r) => r.id !== run.id), run];
+                send({ type: "tool", run });
+              },
+            });
+            sources = result.sources;
+            toolRuns = result.toolRuns;
+            text = result.text;
+            usage = result.usage;
+            finishReason = result.finishReason;
+            if (sources.length) send({ type: "sources", sources });
             if (text) {
               send({ type: "phase", phase: "answering" });
               send({ type: "delta", text });
+            } else if (result.limitReached) {
+              streamError = appError(
+                502,
+                "tool_limit",
+                "Лимит шагов поиска",
+                "Модель не успела дать ответ за отведённое число шагов. Повторите или уточните вопрос.",
+              );
             }
-          } else {
-            const reader = upstream.body.getReader();
-            const decoder = new TextDecoder();
-            const parser = createSseParser((data) => {
-              if (data === "[DONE]") return;
-              let json: unknown;
-              try {
-                json = JSON.parse(data);
-              } catch {
-                return;
-              }
-              const info = parseCompletionChunk(json);
+          } catch (e) {
+            if (e instanceof ProviderStepError) streamError = e.chatError;
+            else throw e;
+          }
+        } else {
+          // --- Connect (streaming first; plain request if the provider rejects streaming) ---
+          let mode: "stream" | "full" = "stream";
+          let upstream: Response | null = null;
+          armIdle(CONNECT_TIMEOUT_MS);
+          for (let attempt = 1; ; attempt++) {
+            const res = await callKimi(
+              config,
+              apiMessages,
+              body.reasoningEffort,
+              mode === "stream",
+              upstreamAbort.signal,
+            );
+            if (res.ok) {
+              upstream = res;
+              break;
+            }
+            const failure = await providerFailure(res, config.apiKey);
+            // Short provider-side throttling (e.g. the previous request is still closing): wait and try again.
+            if (
+              failure.status === 429 &&
+              attempt < MAX_CONNECT_ATTEMPTS &&
+              (failure.retryAfter ?? Infinity) <= MAX_AUTO_RETRY_AFTER_S
+            ) {
+              await sleep(Math.max(1, failure.retryAfter ?? 1) * 1000, upstreamAbort.signal);
+              continue;
+            }
+            if (
+              mode === "stream" &&
+              failure.status === 400 &&
+              /stream/i.test(failure.detail ?? "")
+            ) {
+              mode = "full";
+              continue;
+            }
+            streamError = failure;
+            break;
+          }
+
+          if (upstream) {
+            const contentType = upstream.headers.get("content-type") ?? "";
+            if (mode === "stream" && !contentType.includes("text/event-stream")) mode = "full";
+
+            if (mode === "full" || !upstream.body) {
+              armIdle(FULL_RESPONSE_TIMEOUT_MS);
+              send({ type: "phase", phase: "full" });
+              const info = parseCompletionChunk((await upstream.json()) as unknown);
               if (info.errorMessage) {
                 streamError = describeProviderError(
                   502,
                   sanitizeProviderText(info.errorMessage, [config.apiKey]),
                 );
-                return;
               }
-              if (info.hasReasoning && phase === null) {
-                phase = "thinking";
-                send({ type: "phase", phase });
+              text = info.content;
+              usage = info.usage;
+              finishReason = info.finishReason;
+              if (text) {
+                send({ type: "phase", phase: "answering" });
+                send({ type: "delta", text });
               }
-              if (info.content) {
-                if (phase !== "answering") {
-                  phase = "answering";
+            } else {
+              const reader = upstream.body.getReader();
+              const decoder = new TextDecoder();
+              const parser = createSseParser((data) => {
+                if (data === "[DONE]") return;
+                let json: unknown;
+                try {
+                  json = JSON.parse(data);
+                } catch {
+                  return;
+                }
+                const info = parseCompletionChunk(json);
+                if (info.errorMessage) {
+                  streamError = describeProviderError(
+                    502,
+                    sanitizeProviderText(info.errorMessage, [config.apiKey]),
+                  );
+                  return;
+                }
+                if (info.hasReasoning && phase === null) {
+                  phase = "thinking";
                   send({ type: "phase", phase });
                 }
-                text += info.content;
-                send({ type: "delta", text: info.content });
+                if (info.content) {
+                  if (phase !== "answering") {
+                    phase = "answering";
+                    send({ type: "phase", phase });
+                  }
+                  text += info.content;
+                  send({ type: "delta", text: info.content });
+                }
+                if (info.usage) usage = info.usage;
+                if (info.finishReason) finishReason = info.finishReason;
+              });
+              for (;;) {
+                armIdle(STREAM_IDLE_TIMEOUT_MS);
+                const { done, value } = await reader.read();
+                if (done) break;
+                parser.feed(decoder.decode(value, { stream: true }));
+                if (streamError) {
+                  await reader.cancel().catch(() => undefined);
+                  break;
+                }
               }
-              if (info.usage) usage = info.usage;
-              if (info.finishReason) finishReason = info.finishReason;
-            });
-            for (;;) {
-              armIdle(STREAM_IDLE_TIMEOUT_MS);
-              const { done, value } = await reader.read();
-              if (done) break;
-              parser.feed(decoder.decode(value, { stream: true }));
-              if (streamError) {
-                await reader.cancel().catch(() => undefined);
-                break;
-              }
+              parser.feed(decoder.decode());
+              parser.end();
             }
-            parser.feed(decoder.decode());
-            parser.end();
           }
         }
       } catch (e) {
@@ -623,7 +790,8 @@ export async function handleChatRequest(request: Request): Promise<Response> {
         } else if (upstreamAbort.signal.aborted) {
           // Stopped by the user (or the connection closed): keep what was produced so far.
           // When the browser already stored the stopped reply, the upsert is a no-op.
-          if (text && !stoppedByClient) await saveAssistant(text, "stopped", usage, "stopped");
+          if (text && !stoppedByClient)
+            await saveAssistant(text, "stopped", usage, "stopped", { sources, toolRuns });
           finish();
           return;
         } else {
@@ -642,7 +810,10 @@ export async function handleChatRequest(request: Request): Promise<Response> {
       }
 
       const status = streamError ? "stopped" : "complete";
-      const { row, error } = await saveAssistant(text, status, usage, finishReason);
+      const { row, error } = await saveAssistant(text, status, usage, finishReason, {
+        sources,
+        toolRuns,
+      });
       send({ type: "done", finishReason, usage, assistantMessage: row, saved: !error });
       if (streamError) send({ type: "error", error: streamError });
       else if (error) {

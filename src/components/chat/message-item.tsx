@@ -29,6 +29,12 @@ import { useCodeDrawer } from "@/components/chat/code-drawer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageUsage, usageFromRow } from "@/components/chat/usage";
+import {
+  SourcesBlock,
+  parseSources,
+  parseToolRuns,
+  searchStatusLabel,
+} from "@/components/chat/sources";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { signedUrlsQuery, type MessageRow } from "@/lib/chat/data";
 import { extractCodeBlocks, fileNameForBlock } from "@/lib/chat/code-blocks";
@@ -398,6 +404,9 @@ export const AssistantMessage = memo(function AssistantMessage({
           </p>
         )}
       </MessageContent>
+      {row.search_enabled && (
+        <SourcesBlock sources={parseSources(row.sources)} runs={parseToolRuns(row.tool_runs)} />
+      )}
       <AssistantMeta row={row} onRegenerate={onRegenerate} />
     </Message>
   );
@@ -419,20 +428,23 @@ export function LiveAssistant({ turn }: { turn: LiveTurn }) {
   const now = useNow(running);
   const elapsed = formatSeconds(now - turn.startedAt);
 
+  const searchLabel = searchStatusLabel(turn.toolRuns, turn.phase === "analyzing");
   const label =
-    turn.status === "uploading"
-      ? "Загружаю изображения…"
-      : turn.status === "finalizing"
-        ? "Сохраняю…"
-        : turn.stopRequested
-          ? "Останавливаю…"
-          : turn.phase === "thinking"
-            ? `Думает · ${elapsed}`
-            : turn.phase === "answering"
-              ? `Пишет ответ · ${elapsed}`
-              : turn.phase === "full"
-                ? `Жду полный ответ (без потоковой передачи) · ${elapsed}`
-                : `Подключаюсь к Kimi · ${elapsed}`;
+    searchLabel && running && !turn.text
+      ? `${searchLabel} · ${elapsed}`
+      : turn.status === "uploading"
+        ? "Загружаю изображения…"
+        : turn.status === "finalizing"
+          ? "Сохраняю…"
+          : turn.stopRequested
+            ? "Останавливаю…"
+            : turn.phase === "thinking"
+              ? `Думает · ${elapsed}`
+              : turn.phase === "answering"
+                ? `Пишет ответ · ${elapsed}`
+                : turn.phase === "full"
+                  ? `Жду полный ответ (без потоковой передачи) · ${elapsed}`
+                  : `Подключаюсь к Kimi · ${elapsed}`;
 
   if (turn.status === "error" && !turn.text) return null;
 
@@ -460,6 +472,7 @@ export function LiveAssistant({ turn }: { turn: LiveTurn }) {
           {label}
         </p>
       )}
+      {turn.sources.length > 0 && <SourcesBlock sources={turn.sources} runs={turn.toolRuns} />}
       {turn.text && turn.status === "error" && (
         <p className="text-xs text-muted-foreground">Ответ получен не полностью.</p>
       )}

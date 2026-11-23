@@ -106,8 +106,11 @@ export type Database = {
           reasoning_effort: string | null
           reasoning_tokens: number | null
           role: string
+          search_enabled: boolean
           seq: number
+          sources: Json
           status: string
+          tool_runs: Json
           total_tokens: number | null
           user_id: string
         }
@@ -125,8 +128,11 @@ export type Database = {
           reasoning_effort?: string | null
           reasoning_tokens?: number | null
           role: string
+          search_enabled?: boolean
           seq?: never
+          sources?: Json
           status?: string
+          tool_runs?: Json
           total_tokens?: number | null
           user_id?: string
         }
@@ -144,8 +150,11 @@ export type Database = {
           reasoning_effort?: string | null
           reasoning_tokens?: number | null
           role?: string
+          search_enabled?: boolean
           seq?: never
+          sources?: Json
           status?: string
+          tool_runs?: Json
           total_tokens?: number | null
           user_id?: string
         }
