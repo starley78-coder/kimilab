@@ -12,7 +12,7 @@ import {
   parseStoredAttachments,
   type ChatRequestBody,
 } from "@/lib/chat/schema";
-import { chatCompletionsUrl, resolveKimiConfig, type KimiConfig } from "@/lib/kimi/config";
+import { resolveKimiConfig, type KimiConfig } from "@/lib/kimi/config";
 import {
   appError,
   connectionError,
@@ -22,6 +22,11 @@ import {
   sanitizeProviderText,
   type ChatError,
 } from "@/lib/kimi/errors";
+import {
+  buildKimiRequest,
+  userContentWithImages,
+  type ApiMessage,
+} from "@/lib/kimi/request";
 import {
   createSseParser,
   parseCompletionChunk,
@@ -76,14 +81,6 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-type ApiContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
-
-type ApiMessage =
-  | { role: "user"; content: string | ApiContentPart[] }
-  | { role: "assistant"; content: string };
-
 interface HistoryRow {
   id: string;
   role: string;
@@ -130,16 +127,15 @@ async function buildApiMessages(supabase: DB, history: HistoryRow[]): Promise<Ap
       messages.push({ role: "user", content: row.content });
       continue;
     }
-    const parts: ApiContentPart[] = [];
+    const urls: string[] = [];
     const notes: string[] = [];
     for (const att of atts) {
       const url = dataUrls.get(att.path);
-      if (url) parts.push({ type: "image_url", image_url: { url } });
+      if (url) urls.push(url);
       else notes.push(`[image not re-sent: ${att.name}]`);
     }
     const text = [row.content, ...notes].filter((s) => s.trim()).join("\n");
-    if (text) parts.unshift({ type: "text", text });
-    messages.push({ role: "user", content: parts.length ? parts : row.content });
+    messages.push({ role: "user", content: userContentWithImages(text, urls) });
   }
   return messages;
 }
@@ -151,22 +147,11 @@ function callKimi(
   stream: boolean,
   signal: AbortSignal,
 ): Promise<Response> {
-  const payload: Record<string, unknown> = {
-    model: config.modelId,
-    messages,
-    reasoning_effort: effort,
-    max_tokens: config.maxTokens,
-    stream,
-  };
-  if (stream) payload["stream_options"] = { include_usage: true };
-  return fetch(chatCompletionsUrl(config), {
+  const req = buildKimiRequest(config, messages, effort, stream);
+  return fetch(req.url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-      Accept: stream ? "text/event-stream" : "application/json",
-    },
-    body: JSON.stringify(payload),
+    headers: req.headers,
+    body: JSON.stringify(req.body),
     signal,
   });
 }
@@ -240,7 +225,34 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     );
   }
 
-  // 4. Provider configuration (server secrets)
+  // 4. Conversation must belong to the caller (RLS)
+  const { data: conversation, error: convError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", body.conversationId)
+    .maybeSingle();
+  if (convError || !conversation) {
+    return errorResponse(appError(404, "conversation_not_found", "Диалог не найден", "Диалог удалён или недоступен."));
+  }
+
+  // 5. Persist the user message first so it is never lost, even if the provider call fails
+  const { error: userInsertError } = await supabase.from("messages").upsert(
+    {
+      id: body.userMessageId,
+      conversation_id: body.conversationId,
+      user_id: userId,
+      role: "user",
+      content: body.content,
+      attachments: body.attachments,
+    },
+    { onConflict: "id", ignoreDuplicates: true },
+  );
+  if (userInsertError) {
+    console.error("[chat] user message insert failed", userInsertError.message);
+    return errorResponse(appError(500, "save_failed", "Не удалось сохранить сообщение", "Повторите попытку."));
+  }
+
+  // 6. Provider configuration (server secrets)
   const resolved = resolveKimiConfig({
     KIMI_API_KEY: process.env["KIMI_API_KEY"],
     KIMI_API_BASE_URL: process.env["KIMI_API_BASE_URL"],
@@ -260,17 +272,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   }
   const config = resolved.config;
 
-  // 5. Conversation must belong to the caller (RLS)
-  const { data: conversation, error: convError } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("id", body.conversationId)
-    .maybeSingle();
-  if (convError || !conversation) {
-    return errorResponse(appError(404, "conversation_not_found", "Диалог не найден", "Диалог удалён или недоступен."));
-  }
-
-  // 6. Server-side rate limit
+  // 7. Server-side rate limit
   const { data: quota, error: quotaError } = await supabase.rpc("consume_chat_quota");
   if (quotaError) {
     console.error("[chat] quota check failed", quotaError.message);
@@ -279,23 +281,6 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   const q = quota as { allowed?: boolean; retry_after?: number; scope?: "minute" | "day"; limit?: number } | null;
   if (!q?.allowed) {
     return errorResponse(rateLimitedError(q?.retry_after ?? 60, q?.scope ?? "minute", q?.limit ?? 0));
-  }
-
-  // 7. Persist the user message (idempotent for retries)
-  const { error: userInsertError } = await supabase.from("messages").upsert(
-    {
-      id: body.userMessageId,
-      conversation_id: body.conversationId,
-      user_id: userId,
-      role: "user",
-      content: body.content,
-      attachments: body.attachments,
-    },
-    { onConflict: "id", ignoreDuplicates: true },
-  );
-  if (userInsertError) {
-    console.error("[chat] user message insert failed", userInsertError.message);
-    return errorResponse(appError(500, "save_failed", "Не удалось сохранить сообщение", "Повторите попытку."));
   }
 
   // 8. Load history up to and including this user message
