@@ -119,7 +119,9 @@ export const checkKimiConnection = createServerFn({ method: "POST" })
         latencyMs: null,
         modelListed: null,
         modelsCount: null,
-        error: connectionError(sanitizeProviderText(e instanceof Error ? e.message : String(e), [config.apiKey])),
+        error: connectionError(
+          sanitizeProviderText(e instanceof Error ? e.message : String(e), [config.apiKey]),
+        ),
       };
     }
     const latencyMs = Date.now() - started;

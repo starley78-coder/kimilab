@@ -58,8 +58,7 @@ export interface KimiConfig {
 }
 
 export type KimiConfigResult =
-  | { ok: true; config: KimiConfig }
-  | { ok: false; missing: string[]; invalid: string[] };
+  { ok: true; config: KimiConfig } | { ok: false; missing: string[]; invalid: string[] };
 
 export const DEFAULT_MAX_TOKENS = 32768;
 

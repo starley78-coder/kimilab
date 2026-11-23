@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ALLOWED_IMAGE_TYPES, chatRequestSchema } from "@/lib/chat/schema";
-import {
-  DEFAULT_REASONING_EFFORT,
-  REASONING_EFFORTS,
-  resolveKimiConfig,
-} from "@/lib/kimi/config";
+import { DEFAULT_REASONING_EFFORT, REASONING_EFFORTS, resolveKimiConfig } from "@/lib/kimi/config";
 import { describeProviderError, sanitizeProviderText } from "@/lib/kimi/errors";
 import { buildKimiRequest, userContentWithImages } from "@/lib/kimi/request";
 import { createSseParser, normalizeUsage, parseCompletionChunk } from "@/lib/kimi/sse";
@@ -135,9 +131,23 @@ describe("error messages", () => {
 
   it("never shows the API key in an error", () => {
     const key = "sk-live-abcdef1234567890";
-    const text = sanitizeProviderText(`Incorrect API key provided: ${key}. Authorization: Bearer ${key}`, [key]);
+    const text = sanitizeProviderText(
+      `Incorrect API key provided: ${key}. Authorization: Bearer ${key}`,
+      [key],
+    );
     expect(text).not.toContain(key);
     expect(text).not.toContain("abcdef1234567890");
+  });
+});
+
+describe("provider account identifiers", () => {
+  it("are hidden from error text shown to the user", () => {
+    const text = sanitizeProviderText(
+      "Your account org-42aa67cffc7a432cad04eda95ae89aaa<ak-aa4a6j7efg7i11ey8daa> request reached max organization concurrency: 1",
+    );
+    expect(text).not.toContain("org-42aa");
+    expect(text).not.toContain("ak-aa4a");
+    expect(text).toContain("max organization concurrency: 1");
   });
 });
 
@@ -150,7 +160,9 @@ describe("stream handling", () => {
     expect(thinking.hasReasoning).toBe(true);
     expect(JSON.stringify(thinking)).not.toContain("secret chain of thought");
 
-    const answer = parseCompletionChunk({ choices: [{ delta: { content: "Привет" }, finish_reason: "stop" }] });
+    const answer = parseCompletionChunk({
+      choices: [{ delta: { content: "Привет" }, finish_reason: "stop" }],
+    });
     expect(answer.content).toBe("Привет");
     expect(answer.finishReason).toBe("stop");
   });
@@ -175,12 +187,23 @@ describe("token usage", () => {
         total_tokens: 165,
         completion_tokens_details: { reasoning_tokens: 30 },
       }),
-    ).toEqual({ prompt_tokens: 120, completion_tokens: 45, reasoning_tokens: 30, total_tokens: 165 });
+    ).toEqual({
+      prompt_tokens: 120,
+      completion_tokens: 45,
+      reasoning_tokens: 30,
+      total_tokens: 165,
+    });
   });
 
   it("reads usage that Moonshot puts inside the final choice", () => {
     const info = parseCompletionChunk({
-      choices: [{ delta: {}, finish_reason: "stop", usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } }],
+      choices: [
+        {
+          delta: {},
+          finish_reason: "stop",
+          usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+        },
+      ],
     });
     expect(info.usage?.prompt_tokens).toBe(7);
     expect(info.usage?.completion_tokens).toBe(3);

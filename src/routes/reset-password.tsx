@@ -76,7 +76,11 @@ function ResetPasswordPage() {
               <p className="text-sm text-muted-foreground">
                 Ссылка недействительна или устарела. Запросите новую на странице входа.
               </p>
-              <Button className="mt-5 w-full" variant="outline" onClick={() => navigate({ to: "/auth" })}>
+              <Button
+                className="mt-5 w-full"
+                variant="outline"
+                onClick={() => navigate({ to: "/auth" })}
+              >
                 На страницу входа
               </Button>
             </div>

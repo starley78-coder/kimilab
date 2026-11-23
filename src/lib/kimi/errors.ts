@@ -18,12 +18,18 @@ export interface ChatError {
 }
 
 const KEY_PATTERNS: RegExp[] = [
-  /sk-[A-Za-z0-9_\-]{8,}/g,
-  /Bearer\s+[A-Za-z0-9._\-]{8,}/gi,
-  /(api[_-]?key["'\s:=]+)[A-Za-z0-9._\-]{8,}/gi,
+  // Account and key identifiers some providers echo back in error text
+  /<?\bak-[A-Za-z0-9]{6,}>?/g,
+  /\borg-[A-Za-z0-9]{6,}/g,
+  /sk-[A-Za-z0-9_-]{8,}/g,
+  /Bearer\s+[A-Za-z0-9._-]{8,}/gi,
+  /(api[_-]?key["'\s:=]+)[A-Za-z0-9._-]{8,}/gi,
 ];
 
-export function sanitizeProviderText(text: string | undefined | null, secrets: string[] = []): string {
+export function sanitizeProviderText(
+  text: string | undefined | null,
+  secrets: string[] = [],
+): string {
   if (!text) return "";
   let out = String(text);
   for (const secret of secrets) {
@@ -112,7 +118,8 @@ export function describeProviderError(
         ...base,
         code: "timeout",
         title: `${status} — превышено время ожидания`,
-        message: "Провайдер не успел ответить. Попробуйте ещё раз или выберите уровень рассуждений Low.",
+        message:
+          "Провайдер не успел ответить. Попробуйте ещё раз или выберите уровень рассуждений Low.",
       };
     case 413:
       return {
@@ -134,7 +141,7 @@ export function describeProviderError(
         code: "provider_rate_limited",
         title: "429 — превышен лимит запросов",
         message: retryAfter
-          ? `Провайдер ограничил частоту запросов. Повторите через ${retryAfter} с.`
+          ? `Провайдер ограничил частоту или число одновременных запросов. Повторите через ${retryAfter} с.`
           : "Провайдер ограничил частоту запросов или исчерпана квота. Подождите и повторите.",
       };
     case 500:
@@ -144,7 +151,8 @@ export function describeProviderError(
         ...base,
         code: "provider_unavailable",
         title: `${status} — ошибка сервиса провайдера`,
-        message: "На стороне провайдера произошла ошибка или сервис временно недоступен. Повторите позже.",
+        message:
+          "На стороне провайдера произошла ошибка или сервис временно недоступен. Повторите позже.",
       };
     default:
       if (status >= 500) {
@@ -186,7 +194,11 @@ export function appError(
   return { source: "app", status, code, title, message, ...extra };
 }
 
-export function rateLimitedError(retryAfter: number, scope: "minute" | "day", limit: number): ChatError {
+export function rateLimitedError(
+  retryAfter: number,
+  scope: "minute" | "day",
+  limit: number,
+): ChatError {
   return appError(
     429,
     "app_rate_limited",

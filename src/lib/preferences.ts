@@ -5,11 +5,7 @@ import {
   isReasoningEffort,
   type ReasoningEffort,
 } from "@/lib/kimi/config";
-import {
-  readThemePreference,
-  saveThemePreference,
-  type ThemePreference,
-} from "@/lib/theme";
+import { readThemePreference, saveThemePreference, type ThemePreference } from "@/lib/theme";
 
 const EFFORT_KEY = "kimi-lab-reasoning-effort";
 const listeners = new Set<() => void>();
@@ -49,7 +45,11 @@ export function setReasoningEffort(value: ReasoningEffort) {
 }
 
 export function useReasoningEffort(): [ReasoningEffort, (v: ReasoningEffort) => void] {
-  const value = useSyncExternalStore(subscribe, readReasoningEffort, () => DEFAULT_REASONING_EFFORT);
+  const value = useSyncExternalStore(
+    subscribe,
+    readReasoningEffort,
+    () => DEFAULT_REASONING_EFFORT,
+  );
   return [value, setReasoningEffort];
 }
 

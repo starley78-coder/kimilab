@@ -64,7 +64,12 @@ export async function streamChat(
       type: "error",
       error:
         error ??
-        appError(res.status, "app_error", `${res.status} — ошибка приложения`, "Сервер приложения вернул ошибку."),
+        appError(
+          res.status,
+          "app_error",
+          `${res.status} — ошибка приложения`,
+          "Сервер приложения вернул ошибку.",
+        ),
     });
     return;
   }

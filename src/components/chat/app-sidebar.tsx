@@ -20,7 +20,10 @@ import { useDeferredValue, useEffect, useState } from "react";
 
 import { BrandWordmark } from "@/components/brand-mark";
 import { isTurnActive, useLiveTurns } from "@/components/chat/chat-runtime";
-import { DeleteConversationDialog, RenameConversationDialog } from "@/components/chat/conversation-dialogs";
+import {
+  DeleteConversationDialog,
+  RenameConversationDialog,
+} from "@/components/chat/conversation-dialogs";
 import { useSettings } from "@/components/chat/settings-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,7 +92,10 @@ function ConversationItem({
         >
           <span className="truncate">{conversation.title}</span>
           {live && (
-            <span className="ml-auto size-1.5 shrink-0 animate-pulse rounded-full bg-signal" aria-label="Идёт генерация" />
+            <span
+              className="ml-auto size-1.5 shrink-0 animate-pulse rounded-full bg-signal"
+              aria-label="Идёт генерация"
+            />
           )}
         </Link>
       </SidebarMenuButton>
@@ -131,9 +137,13 @@ function SearchResults({ query, activeId }: { query: string; activeId?: string |
             ))}
           </SidebarMenu>
         ) : results.isError ? (
-          <p className="px-2 py-3 text-xs text-destructive">Поиск не удался: {results.error.message}</p>
+          <p className="px-2 py-3 text-xs text-destructive">
+            Поиск не удался: {results.error.message}
+          </p>
         ) : results.data.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-muted-foreground">Ничего не найдено по запросу «{query}»</p>
+          <p className="px-2 py-3 text-xs text-muted-foreground">
+            Ничего не найдено по запросу «{query}»
+          </p>
         ) : (
           <SidebarMenu>
             {results.data.map((hit) => (
@@ -150,7 +160,9 @@ function SearchResults({ query, activeId }: { query: string; activeId?: string |
                   >
                     <span className="w-full truncate font-medium">{hit.title}</span>
                     {hit.snippet && (
-                      <span className="line-clamp-2 w-full text-xs text-muted-foreground">{hit.snippet}</span>
+                      <span className="line-clamp-2 w-full text-xs text-muted-foreground">
+                        {hit.snippet}
+                      </span>
                     )}
                   </Link>
                 </SidebarMenuButton>
@@ -196,8 +208,14 @@ function AccountMenu({ email }: { email: string }) {
           <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
         </SidebarMenuButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-[--radix-dropdown-menu-trigger-width] min-w-56">
-        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">{email}</DropdownMenuLabel>
+      <DropdownMenuContent
+        side="top"
+        align="start"
+        className="w-[--radix-dropdown-menu-trigger-width] min-w-56"
+      >
+        <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground">
+          {email}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={openSettings}>
           <Settings2 /> Настройки
@@ -253,7 +271,11 @@ export function AppSidebar({ email }: { email: string }) {
               <BrandWordmark />
             </Link>
           </div>
-          <Button asChild variant="outline" className="h-9 justify-start gap-2 rounded-lg bg-sidebar shadow-none">
+          <Button
+            asChild
+            variant="outline"
+            className="h-9 justify-start gap-2 rounded-lg bg-sidebar shadow-none"
+          >
             <Link to="/chat" onClick={closeOnMobile}>
               <SquarePen className="size-4" />
               Новый диалог
@@ -334,8 +356,14 @@ export function AppSidebar({ email }: { email: string }) {
         <SidebarRail />
       </Sidebar>
 
-      <RenameConversationDialog conversation={renaming} onOpenChange={(o) => !o && setRenaming(null)} />
-      <DeleteConversationDialog conversation={deleting} onOpenChange={(o) => !o && setDeleting(null)} />
+      <RenameConversationDialog
+        conversation={renaming}
+        onOpenChange={(o) => !o && setRenaming(null)}
+      />
+      <DeleteConversationDialog
+        conversation={deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      />
     </>
   );
 }

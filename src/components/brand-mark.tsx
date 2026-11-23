@@ -15,7 +15,13 @@ export function BrandMark({ className }: { className?: string }) {
         </mask>
       </defs>
       <rect width="64" height="64" rx="17" className="fill-primary" />
-      <circle cx="29.5" cy="34" r="17.5" className="fill-primary-foreground" mask={`url(#${maskId})`} />
+      <circle
+        cx="29.5"
+        cy="34"
+        r="17.5"
+        className="fill-primary-foreground"
+        mask={`url(#${maskId})`}
+      />
       <circle cx="44.5" cy="20.5" r="4.6" className="fill-signal" />
     </svg>
   );

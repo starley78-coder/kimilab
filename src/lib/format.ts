@@ -25,7 +25,9 @@ export function dateGroupOf(iso: string, now = new Date()): DateGroup {
   return "Ранее";
 }
 
-export function groupByDate<T extends { updated_at: string }>(items: T[]): { group: DateGroup; items: T[] }[] {
+export function groupByDate<T extends { updated_at: string }>(
+  items: T[],
+): { group: DateGroup; items: T[] }[] {
   const order: DateGroup[] = ["Сегодня", "Вчера", "Последние 7 дней", "Последние 30 дней", "Ранее"];
   const map = new Map<DateGroup, T[]>();
   const now = new Date();

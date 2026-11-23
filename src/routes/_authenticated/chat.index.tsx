@@ -27,10 +27,22 @@ export const Route = createFileRoute("/_authenticated/chat/")({
 });
 
 const STARTERS = [
-  { title: "Сравни в таблице", text: "Сравни в таблице PostgreSQL, MySQL и SQLite: сильные стороны, ограничения, когда что выбирать." },
-  { title: "Напиши код", text: "Напиши на TypeScript функцию debounce с отменой и тестами на Vitest." },
-  { title: "Разбери идею", text: "Помоги критически разобрать идею: какие допущения стоит проверить первыми?" },
-  { title: "План обучения", text: "Составь план изучения Rust на 4 недели для разработчика на Python." },
+  {
+    title: "Сравни в таблице",
+    text: "Сравни в таблице PostgreSQL, MySQL и SQLite: сильные стороны, ограничения, когда что выбирать.",
+  },
+  {
+    title: "Напиши код",
+    text: "Напиши на TypeScript функцию debounce с отменой и тестами на Vitest.",
+  },
+  {
+    title: "Разбери идею",
+    text: "Помоги критически разобрать идею: какие допущения стоит проверить первыми?",
+  },
+  {
+    title: "План обучения",
+    text: "Составь план изучения Rust на 4 недели для разработчика на Python.",
+  },
 ];
 
 function NewChatPage() {
@@ -46,9 +58,12 @@ function NewChatPage() {
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 py-10">
           <div className="flex flex-col items-center text-center">
             <BrandMark className="size-12" />
-            <h2 className="mt-5 text-2xl font-semibold tracking-tight sm:text-[1.7rem]">Чем займёмся?</h2>
+            <h2 className="mt-5 text-2xl font-semibold tracking-tight sm:text-[1.7rem]">
+              Чем займёмся?
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              {MODEL_DISPLAY_NAME} · режим Thinking всегда включён, в чате показывается только итоговый ответ
+              {MODEL_DISPLAY_NAME} · режим Thinking всегда включён, в чате показывается только
+              итоговый ответ
             </p>
           </div>
 
@@ -58,7 +73,8 @@ function NewChatPage() {
               <div className="flex-1">
                 <p className="font-medium">Подключение к Kimi не настроено</p>
                 <p className="mt-0.5 text-muted-foreground">
-                  Не хватает серверных секретов: {[...status.data.missing, ...status.data.invalid].join(", ")}.
+                  Не хватает серверных секретов:{" "}
+                  {[...status.data.missing, ...status.data.invalid].join(", ")}.
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={openSettings}>
@@ -72,14 +88,20 @@ function NewChatPage() {
               <button
                 key={s.title}
                 type="button"
-                onClick={() => void send({ conversationId: null, text: s.text, files: [] }).catch(() => undefined)}
+                onClick={() =>
+                  void send({ conversationId: null, text: s.text, files: [] }).catch(
+                    () => undefined,
+                  )
+                }
                 className="group rounded-xl border bg-card px-4 py-3 text-left transition-colors hover:border-ring/40 hover:bg-accent"
               >
                 <span className="flex items-center justify-between text-sm font-medium">
                   {s.title}
                   <ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                 </span>
-                <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">{s.text}</span>
+                <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">
+                  {s.text}
+                </span>
               </button>
             ))}
           </div>

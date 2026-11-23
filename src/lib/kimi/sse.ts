@@ -144,9 +144,8 @@ export type ChatStreamEvent =
       assistantMessageId: string;
       model: string;
       provider: string;
-      mode: "stream" | "full";
     }
-  | { type: "phase"; phase: "thinking" | "answering" }
+  | { type: "phase"; phase: "thinking" | "answering" | "full" }
   | { type: "delta"; text: string }
   | { type: "usage"; usage: Usage }
   | {

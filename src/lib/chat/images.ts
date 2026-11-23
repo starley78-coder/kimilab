@@ -25,7 +25,11 @@ export async function dataUrlToBlob(url: string): Promise<Blob> {
   return res.blob();
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number,
+): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
@@ -36,7 +40,9 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number):
 export async function prepareImage(input: Blob, name: string): Promise<PreparedImage> {
   const type = input.type;
   if (!isAllowedImageType(type)) {
-    throw new Error(`Формат «${type || "неизвестен"}» не поддерживается. Используйте PNG, JPG или WebP.`);
+    throw new Error(
+      `Формат «${type || "неизвестен"}» не поддерживается. Используйте PNG, JPG или WebP.`,
+    );
   }
   if (input.size > MAX_IMAGE_INPUT_BYTES) {
     throw new Error("Изображение больше 20 МБ.");
@@ -72,6 +78,7 @@ export async function prepareImage(input: Blob, name: string): Promise<PreparedI
     mediaType = "image/jpeg";
   }
   if (!blob) throw new Error("Не удалось сжать изображение.");
-  if (blob.size > MAX_IMAGE_STORED_BYTES) throw new Error("Изображение слишком большое даже после сжатия.");
+  if (blob.size > MAX_IMAGE_STORED_BYTES)
+    throw new Error("Изображение слишком большое даже после сжатия.");
   return { blob, mediaType, width: w, height: h, name };
 }

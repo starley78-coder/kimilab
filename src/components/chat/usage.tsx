@@ -1,7 +1,7 @@
 import { ArrowDownToLine, ArrowUpFromLine, Sigma } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { MessageRow } from "@/lib/chat/data";
+import { isEmptyStoppedReply, type MessageRow } from "@/lib/chat/data";
 import { formatTokens } from "@/lib/format";
 import type { Usage } from "@/lib/kimi/sse";
 
@@ -53,7 +53,8 @@ export function MessageUsage({ usage }: { usage: Usage | null }) {
 }
 
 export function usageFromRow(row: MessageRow): Usage | null {
-  if (row.prompt_tokens === null && row.completion_tokens === null && row.total_tokens === null) return null;
+  if (row.prompt_tokens === null && row.completion_tokens === null && row.total_tokens === null)
+    return null;
   return {
     prompt_tokens: row.prompt_tokens,
     completion_tokens: row.completion_tokens,
@@ -71,9 +72,15 @@ export interface ConversationTotals {
 }
 
 export function conversationTotals(messages: MessageRow[]): ConversationTotals {
-  const totals: ConversationTotals = { prompt: 0, completion: 0, reasoning: 0, replies: 0, repliesWithUsage: 0 };
+  const totals: ConversationTotals = {
+    prompt: 0,
+    completion: 0,
+    reasoning: 0,
+    replies: 0,
+    repliesWithUsage: 0,
+  };
   for (const m of messages) {
-    if (m.role !== "assistant") continue;
+    if (m.role !== "assistant" || isEmptyStoppedReply(m)) continue;
     totals.replies++;
     if (m.prompt_tokens !== null || m.completion_tokens !== null) totals.repliesWithUsage++;
     totals.prompt += m.prompt_tokens ?? 0;

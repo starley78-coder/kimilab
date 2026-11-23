@@ -23,7 +23,15 @@ import { useReasoningEffort, useThemePreference } from "@/lib/preferences";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-function Section({ title, children, hint }: { title: string; children: React.ReactNode; hint?: string }) {
+function Section({
+  title,
+  children,
+  hint,
+}: {
+  title: string;
+  children: React.ReactNode;
+  hint?: string;
+}) {
   return (
     <section className="grid gap-2.5">
       <div>
@@ -47,7 +55,11 @@ function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-muted p-1">
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-muted p-1"
+    >
       {options.map((o) => (
         <button
           key={o.value}
@@ -81,7 +93,13 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function SettingsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   const [effort, setEffort] = useReasoningEffort();
   const [theme, setTheme] = useThemePreference();
   const status = useQuery({ ...kimiStatusQuery(), enabled: open });
@@ -127,8 +145,8 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </div>
             {s && !s.configured && (
               <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-foreground">
-                Не хватает серверных секретов: {[...s.missing, ...s.invalid].join(", ")}. Ключ хранится только на
-                сервере и никогда не передаётся в браузер.
+                Не хватает серверных секретов: {[...s.missing, ...s.invalid].join(", ")}. Ключ
+                хранится только на сервере и никогда не передаётся в браузер.
               </p>
             )}
             <div className="flex flex-wrap items-center gap-3">
@@ -151,7 +169,8 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </div>
             {connection.data?.ok && connection.data.modelListed === false && (
               <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-foreground">
-                Ключ работает, но модели «{s?.modelId}» нет в списке, который вернул провайдер. Проверьте KIMI_MODEL_ID.
+                Ключ работает, но модели «{s?.modelId}» нет в списке, который вернул провайдер.
+                Проверьте KIMI_MODEL_ID.
               </p>
             )}
             {connection.data?.error && <ErrorCard error={connection.data.error} />}
@@ -179,7 +198,10 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
               label="Уровень рассуждений"
               value={effort}
               onChange={setEffort}
-              options={REASONING_EFFORTS.map((e) => ({ value: e, label: REASONING_EFFORT_LABELS[e] }))}
+              options={REASONING_EFFORTS.map((e) => ({
+                value: e,
+                label: REASONING_EFFORT_LABELS[e],
+              }))}
             />
             <p className="text-xs text-muted-foreground">{REASONING_EFFORT_HINTS[effort]}</p>
           </Section>
@@ -200,8 +222,14 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <Section title="Ограничения и расход">
             <ul className="grid gap-1.5 text-xs text-muted-foreground">
               <li>Ограничение приложения: до 10 запросов в минуту и 500 в сутки.</li>
-              <li>Токены показываются из поля usage, которое возвращает API. Стоимость не рассчитывается.</li>
-              <li>Изображения хранятся в приватном хранилище, в истории сохраняется только текст и ссылки на файлы.</li>
+              <li>
+                Токены показываются из поля usage, которое возвращает API. Стоимость не
+                рассчитывается.
+              </li>
+              <li>
+                Изображения хранятся в приватном хранилище, в истории сохраняется только текст и
+                ссылки на файлы.
+              </li>
             </ul>
           </Section>
         </div>

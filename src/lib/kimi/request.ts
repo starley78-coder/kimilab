@@ -1,12 +1,10 @@
 import { chatCompletionsUrl, type KimiConfig, type ReasoningEffort } from "@/lib/kimi/config";
 
 export type ApiContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
 export type ApiMessage =
-  | { role: "user"; content: string | ApiContentPart[] }
-  | { role: "assistant"; content: string };
+  { role: "user"; content: string | ApiContentPart[] } | { role: "assistant"; content: string };
 
 export interface KimiHttpRequest {
   url: string;
@@ -44,7 +42,10 @@ export function buildKimiRequest(
 }
 
 /** A user turn with images, in the OpenAI-compatible content-array format. */
-export function userContentWithImages(text: string, imageUrls: string[]): string | ApiContentPart[] {
+export function userContentWithImages(
+  text: string,
+  imageUrls: string[],
+): string | ApiContentPart[] {
   if (imageUrls.length === 0) return text;
   const parts: ApiContentPart[] = [];
   if (text.trim()) parts.push({ type: "text", text });

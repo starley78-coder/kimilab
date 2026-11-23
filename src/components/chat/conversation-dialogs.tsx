@@ -106,11 +106,11 @@ export function DeleteConversationDialog({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { conversationId?: string };
-  const { stop } = useChatRuntime();
+  const { abandon } = useChatRuntime();
 
   const mutation = useMutation({
     mutationFn: async (id: string) => {
-      stop(id);
+      abandon(id);
       await deleteConversation(id);
       return id;
     },
@@ -133,8 +133,8 @@ export function DeleteConversationDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Удалить диалог?</AlertDialogTitle>
           <AlertDialogDescription>
-            «{conversation?.title}» будет удалён вместе со всеми сообщениями и изображениями. Это действие нельзя
-            отменить.
+            «{conversation?.title}» будет удалён вместе со всеми сообщениями и изображениями. Это
+            действие нельзя отменить.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

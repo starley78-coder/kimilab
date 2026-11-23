@@ -68,12 +68,22 @@ function CopyAction({ text }: { text: string }) {
   );
 }
 
-function ImageLightbox({ url, name, onClose }: { url: string | null; name: string; onClose: () => void }) {
+function ImageLightbox({
+  url,
+  name,
+  onClose,
+}: {
+  url: string | null;
+  name: string;
+  onClose: () => void;
+}) {
   return (
     <Dialog open={!!url} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-[min(92vw,1100px)] border-none bg-transparent p-0 shadow-none">
         <DialogTitle className="sr-only">{name}</DialogTitle>
-        {url && <img src={url} alt={name} className="max-h-[85vh] w-full rounded-xl object-contain" />}
+        {url && (
+          <img src={url} alt={name} className="max-h-[85vh] w-full rounded-xl object-contain" />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -107,7 +117,13 @@ function MessageImages({
           item.url ? (
             <Attachment
               key={item.id}
-              data={{ id: item.id, type: "file", url: item.url, mediaType: item.mediaType, filename: item.name }}
+              data={{
+                id: item.id,
+                type: "file",
+                url: item.url,
+                mediaType: item.mediaType,
+                filename: item.name,
+              }}
               className="size-28 cursor-zoom-in border"
               onClick={() => setOpen({ url: item.url, name: item.name })}
             >
@@ -119,12 +135,20 @@ function MessageImages({
               className="flex size-28 items-center justify-center rounded-lg border bg-muted text-muted-foreground"
               title={signed.isError ? "Изображение недоступно" : "Загрузка…"}
             >
-              {signed.isError ? <ImageOff className="size-4" /> : <span className="size-4 animate-pulse rounded-full bg-border" />}
+              {signed.isError ? (
+                <ImageOff className="size-4" />
+              ) : (
+                <span className="size-4 animate-pulse rounded-full bg-border" />
+              )}
             </div>
           ),
         )}
       </Attachments>
-      <ImageLightbox url={open?.url ?? null} name={open?.name ?? ""} onClose={() => setOpen(null)} />
+      <ImageLightbox
+        url={open?.url ?? null}
+        name={open?.name ?? ""}
+        onClose={() => setOpen(null)}
+      />
     </>
   );
 }
@@ -145,7 +169,9 @@ export function UserMessage({
       )}
       {content.trim() && (
         <MessageContent>
-          <p className="whitespace-pre-wrap break-words text-[0.95rem] leading-relaxed">{content}</p>
+          <p className="whitespace-pre-wrap break-words text-[0.95rem] leading-relaxed">
+            {content}
+          </p>
         </MessageContent>
       )}
     </Message>
@@ -153,7 +179,9 @@ export function UserMessage({
 }
 
 function AssistantMeta({ row }: { row: MessageRow }) {
-  const effort = isReasoningEffort(row.reasoning_effort) ? REASONING_EFFORT_LABELS[row.reasoning_effort] : null;
+  const effort = isReasoningEffort(row.reasoning_effort)
+    ? REASONING_EFFORT_LABELS[row.reasoning_effort]
+    : null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <MessageActions className="-ml-1.5">
@@ -185,7 +213,8 @@ export const AssistantMessage = memo(function AssistantMessage({ row }: { row: M
           </MessageResponse>
         ) : (
           <p className="text-sm italic text-muted-foreground">
-            Модель не вернула текст ответа{row.finish_reason ? ` (finish_reason: ${row.finish_reason})` : ""}.
+            Модель не вернула текст ответа
+            {row.finish_reason ? ` (finish_reason: ${row.finish_reason})` : ""}.
           </p>
         )}
       </MessageContent>
@@ -205,7 +234,8 @@ function useNow(active: boolean) {
 }
 
 export function LiveAssistant({ turn }: { turn: LiveTurn }) {
-  const running = turn.status === "submitted" || turn.status === "streaming" || turn.status === "uploading";
+  const running =
+    turn.status === "submitted" || turn.status === "streaming" || turn.status === "uploading";
   const now = useNow(running);
   const elapsed = formatSeconds(now - turn.startedAt);
 
@@ -214,11 +244,15 @@ export function LiveAssistant({ turn }: { turn: LiveTurn }) {
       ? "Загружаю изображения…"
       : turn.status === "finalizing"
         ? "Сохраняю…"
-        : turn.phase === "thinking"
-          ? `Думает · ${elapsed}`
-          : turn.phase === "answering"
-            ? `Пишет ответ · ${elapsed}`
-            : `Подключаюсь к Kimi · ${elapsed}`;
+        : turn.stopRequested
+          ? "Останавливаю…"
+          : turn.phase === "thinking"
+            ? `Думает · ${elapsed}`
+            : turn.phase === "answering"
+              ? `Пишет ответ · ${elapsed}`
+              : turn.phase === "full"
+                ? `Жду полный ответ (без потоковой передачи) · ${elapsed}`
+                : `Подключаюсь к Kimi · ${elapsed}`;
 
   if (turn.status === "error" && !turn.text) return null;
 

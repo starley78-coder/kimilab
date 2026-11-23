@@ -217,7 +217,11 @@ function AuthPage() {
               )}
               <Button type="submit" size="xl" className="w-full" disabled={busy}>
                 {busy && <Loader2 className="animate-spin" />}
-                {mode === "signin" ? "Войти" : mode === "signup" ? "Создать аккаунт" : "Отправить ссылку"}
+                {mode === "signin"
+                  ? "Войти"
+                  : mode === "signup"
+                    ? "Создать аккаунт"
+                    : "Отправить ссылку"}
               </Button>
               {mode === "forgot" && (
                 <button

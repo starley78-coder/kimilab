@@ -17,6 +17,7 @@ import {
   conversationsQuery,
   createConversation,
   deleteConversation,
+  deleteEmptyStoppedReplies,
   messagesQuery,
   saveStoppedReply,
   uploadImage,
@@ -40,7 +41,7 @@ import type { Usage } from "@/lib/kimi/sse";
 import { readReasoningEffort } from "@/lib/preferences";
 
 export type TurnStatus = "uploading" | "submitted" | "streaming" | "error" | "finalizing";
-export type TurnPhase = "connecting" | "thinking" | "answering";
+export type TurnPhase = "connecting" | "thinking" | "answering" | "full";
 
 export interface LiveTurn {
   conversationId: string;
@@ -62,7 +63,10 @@ export interface LiveTurn {
   model: string | null;
   /** True once the server reported the reply as saved (or partially saved). */
   committed: boolean;
-  mode: "stream" | "full" | null;
+  /** True once the server confirmed the user message is stored and generation began. */
+  started: boolean;
+  /** Stop was pressed before the server confirmed the start; it is applied as soon as it does. */
+  stopRequested: boolean;
 }
 
 class TurnStore {
@@ -117,6 +121,8 @@ interface ChatRuntimeValue {
   store: TurnStore;
   send: (input: SendInput) => Promise<void>;
   stop: (conversationId: string) => void;
+  /** Drops a running turn without saving anything (used when the conversation is deleted). */
+  abandon: (conversationId: string) => void;
   retry: (conversationId: string) => void;
   resend: (conversationId: string, message: MessageRow) => void;
   dismiss: (conversationId: string) => void;
@@ -125,7 +131,10 @@ interface ChatRuntimeValue {
 const ChatRuntimeContext = createContext<ChatRuntimeValue | null>(null);
 
 function isActive(turn: LiveTurn | undefined) {
-  return !!turn && (turn.status === "uploading" || turn.status === "submitted" || turn.status === "streaming");
+  return (
+    !!turn &&
+    (turn.status === "uploading" || turn.status === "submitted" || turn.status === "streaming")
+  );
 }
 
 export function ChatRuntimeProvider({ userId, children }: { userId: string; children: ReactNode }) {
@@ -133,6 +142,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
   if (!storeRef.current) storeRef.current = new TurnStore();
   const store = storeRef.current;
   const controllers = useRef(new Map<string, AbortController>());
+  const pendingStops = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const performStopRef = useRef<(conversationId: string) => void>(() => undefined);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -159,6 +170,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         usage: null,
         error: null,
         committed: false,
+        started: false,
+        stopRequested: false,
         startedAt: Date.now(),
         phaseStartedAt: Date.now(),
       });
@@ -169,11 +182,22 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
           signal: controller.signal,
           onEvent: (event) => {
             switch (event.type) {
-              case "start":
-                store.patch(conversationId, { model: event.model, mode: event.mode });
+              case "start": {
+                store.patch(conversationId, { model: event.model, started: true });
+                const pending = pendingStops.current.get(conversationId);
+                if (pending !== undefined) {
+                  clearTimeout(pending);
+                  pendingStops.current.delete(conversationId);
+                  performStopRef.current(conversationId);
+                }
                 break;
+              }
               case "phase":
-                store.patch(conversationId, { status: "streaming", phase: event.phase, phaseStartedAt: Date.now() });
+                store.patch(conversationId, {
+                  status: event.phase === "full" ? "submitted" : "streaming",
+                  phase: event.phase,
+                  phaseStartedAt: Date.now(),
+                });
                 break;
               case "delta":
                 store.patch(conversationId, (t) => ({
@@ -186,7 +210,11 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
                 store.patch(conversationId, { usage: event.usage });
                 break;
               case "done":
-                store.patch(conversationId, { committed: event.saved, status: "finalizing", usage: event.usage });
+                store.patch(conversationId, {
+                  committed: event.saved,
+                  status: "finalizing",
+                  usage: event.usage,
+                });
                 break;
               case "error":
                 sawError = true;
@@ -211,7 +239,13 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         }
         return;
       } finally {
-        if (controllers.current.get(conversationId) === controller) controllers.current.delete(conversationId);
+        if (controllers.current.get(conversationId) === controller)
+          controllers.current.delete(conversationId);
+        const pending = pendingStops.current.get(conversationId);
+        if (pending !== undefined) {
+          clearTimeout(pending);
+          pendingStops.current.delete(conversationId);
+        }
       }
 
       await refreshConversation(conversationId);
@@ -241,7 +275,9 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
           files.map(async (f) => prepareImage(await dataUrlToBlob(f.url), f.filename || "image")),
         );
       } catch (e) {
-        toast.error("Изображение не подходит", { description: e instanceof Error ? e.message : undefined });
+        toast.error("Изображение не подходит", {
+          description: e instanceof Error ? e.message : undefined,
+        });
         throw e;
       }
 
@@ -252,12 +288,20 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
 
       if (!existingId) {
         try {
-          const row = await createConversation(conversationId, deriveTitle(content, prepared.length > 0));
-          queryClient.setQueryData<ConversationRow[]>(conversationsQuery().queryKey, (old) => [row, ...(old ?? [])]);
+          const row = await createConversation(
+            conversationId,
+            deriveTitle(content, prepared.length > 0),
+          );
+          queryClient.setQueryData<ConversationRow[]>(conversationsQuery().queryKey, (old) => [
+            row,
+            ...(old ?? []),
+          ]);
           queryClient.setQueryData(["conversation", conversationId], row);
           queryClient.setQueryData<MessageRow[]>(messagesQuery(conversationId).queryKey, []);
         } catch (e) {
-          toast.error("Не удалось создать диалог", { description: e instanceof Error ? e.message : undefined });
+          toast.error("Не удалось создать диалог", {
+            description: e instanceof Error ? e.message : undefined,
+          });
           throw e;
         }
       }
@@ -282,11 +326,13 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         error: null,
         model: null,
         committed: false,
-        mode: null,
+        started: false,
+        stopRequested: false,
       });
 
       // Existing thread: show the message right away while images upload.
-      if (existingId) store.set(conversationId, makeTurn([], prepared.length ? "uploading" : "submitted"));
+      if (existingId)
+        store.set(conversationId, makeTurn([], prepared.length ? "uploading" : "submitted"));
 
       const uploads = await Promise.allSettled(
         prepared.map(async (p): Promise<StoredAttachment> => {
@@ -344,7 +390,7 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
     [store, queryClient, navigate, runTurn, userId],
   );
 
-  const stop = useCallback(
+  const performStop = useCallback(
     (conversationId: string) => {
       const turn = store.get(conversationId);
       controllers.current.get(conversationId)?.abort();
@@ -353,7 +399,9 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
       store.patch(conversationId, { status: "finalizing" });
       void (async () => {
         try {
-          if (turn.text.trim() && turn.request) {
+          // Storing the stopped reply (even an empty one) is also the signal that makes
+          // the server cancel the request at the provider.
+          if (turn.request && turn.started && !turn.committed) {
             await saveStoppedReply({
               id: turn.assistantMessageId,
               conversationId,
@@ -373,6 +421,43 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
       })();
     },
     [store, userId, refreshConversation],
+  );
+  performStopRef.current = performStop;
+
+  const stop = useCallback(
+    (conversationId: string) => {
+      const turn = store.get(conversationId);
+      if (!turn || !isActive(turn)) return;
+      if (turn.request && !turn.started) {
+        // The server has not confirmed the start yet: stop as soon as it does (or after a short wait).
+        if (pendingStops.current.has(conversationId)) return;
+        store.patch(conversationId, { stopRequested: true });
+        pendingStops.current.set(
+          conversationId,
+          setTimeout(() => {
+            pendingStops.current.delete(conversationId);
+            performStop(conversationId);
+          }, 6000),
+        );
+        return;
+      }
+      performStop(conversationId);
+    },
+    [store, performStop],
+  );
+
+  const abandon = useCallback(
+    (conversationId: string) => {
+      const pending = pendingStops.current.get(conversationId);
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        pendingStops.current.delete(conversationId);
+      }
+      controllers.current.get(conversationId)?.abort();
+      controllers.current.delete(conversationId);
+      store.delete(conversationId);
+    },
+    [store],
   );
 
   const retry = useCallback(
@@ -407,8 +492,15 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         error: null,
         model: null,
         committed: false,
-        mode: null,
+        started: false,
+        stopRequested: false,
       });
+      // A reply that was stopped before any text arrived is only a marker: replace it.
+      void deleteEmptyStoppedReplies(conversationId)
+        .catch(() => undefined)
+        .then(() =>
+          queryClient.invalidateQueries({ queryKey: messagesQuery(conversationId).queryKey }),
+        );
       void runTurn(conversationId, {
         conversationId,
         userMessageId: message.id,
@@ -418,7 +510,7 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
         reasoningEffort: readReasoningEffort(),
       });
     },
-    [store, runTurn],
+    [store, runTurn, queryClient],
   );
 
   const dismiss = useCallback(
@@ -429,8 +521,8 @@ export function ChatRuntimeProvider({ userId, children }: { userId: string; chil
   );
 
   const value = useMemo(
-    () => ({ store, send, stop, retry, resend, dismiss }),
-    [store, send, stop, retry, resend, dismiss],
+    () => ({ store, send, stop, abandon, retry, resend, dismiss }),
+    [store, send, stop, abandon, retry, resend, dismiss],
   );
 
   return <ChatRuntimeContext.Provider value={value}>{children}</ChatRuntimeContext.Provider>;
@@ -455,4 +547,3 @@ export function useLiveTurn(conversationId: string | null): LiveTurn | undefined
 export function isTurnActive(turn: LiveTurn | undefined) {
   return isActive(turn);
 }
-

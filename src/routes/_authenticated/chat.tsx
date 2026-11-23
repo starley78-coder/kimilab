@@ -1,5 +1,10 @@
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Outlet, createFileRoute, useNavigate, type ErrorComponentProps } from "@tanstack/react-router";
+import {
+  Outlet,
+  createFileRoute,
+  useNavigate,
+  type ErrorComponentProps,
+} from "@tanstack/react-router";
 import { Lock, LogOut } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
@@ -59,7 +64,9 @@ function ChatError({ error, reset }: ErrorComponentProps) {
       <div className="max-w-sm text-center">
         <BrandMark className="mx-auto size-10" />
         <h1 className="mt-4 text-lg font-semibold">Не удалось открыть Kimi Lab</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : String(error)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <Button className="mt-5" onClick={reset}>
           Повторить
         </Button>
@@ -79,8 +86,8 @@ function NoAccess({ email }: { email: string }) {
         </span>
         <h1 className="mt-4 text-lg font-semibold">Это персональное пространство</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Аккаунт <span className="font-medium text-foreground">{email}</span> не является владельцем Kimi Lab, поэтому
-          доступ к модели и истории закрыт.
+          Аккаунт <span className="font-medium text-foreground">{email}</span> не является
+          владельцем Kimi Lab, поэтому доступ к модели и истории закрыт.
         </p>
         <Button
           variant="outline"

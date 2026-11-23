@@ -11,7 +11,10 @@ import {
 import { ChatHeader } from "@/components/chat/chat-header";
 import { useChatRuntime, useLiveTurn } from "@/components/chat/chat-runtime";
 import { Composer } from "@/components/chat/composer";
-import { DeleteConversationDialog, RenameConversationDialog } from "@/components/chat/conversation-dialogs";
+import {
+  DeleteConversationDialog,
+  RenameConversationDialog,
+} from "@/components/chat/conversation-dialogs";
 import { ErrorCard } from "@/components/chat/error-card";
 import { AssistantMessage, LiveAssistant, UserMessage } from "@/components/chat/message-item";
 import { useSettings } from "@/components/chat/settings-context";
@@ -24,7 +27,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { attachmentsOf, conversationQuery, messagesQuery, type ConversationRow } from "@/lib/chat/data";
+import {
+  attachmentsOf,
+  conversationQuery,
+  isEmptyStoppedReply,
+  messagesQuery,
+  type ConversationRow,
+} from "@/lib/chat/data";
 
 export const Route = createFileRoute("/_authenticated/chat/$conversationId")({
   loader: async ({ context, params }) => {
@@ -117,8 +126,14 @@ function ThreadActions({ conversation }: { conversation: ConversationRow }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <RenameConversationDialog conversation={renaming} onOpenChange={(o) => !o && setRenaming(null)} />
-      <DeleteConversationDialog conversation={deleting} onOpenChange={(o) => !o && setDeleting(null)} />
+      <RenameConversationDialog
+        conversation={renaming}
+        onOpenChange={(o) => !o && setRenaming(null)}
+      />
+      <DeleteConversationDialog
+        conversation={deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      />
     </>
   );
 }
@@ -150,7 +165,11 @@ function ThreadView({ conversationId }: { conversationId: string }) {
   const showOptimisticUser = !!turn && !ids.has(turn.userMessage.id);
   const showLiveAssistant = !!turn && !ids.has(turn.assistantMessageId);
   const last = messages.at(-1);
-  const dangling = !turn && last?.role === "user";
+  const stoppedEarly = !!last && isEmptyStoppedReply(last);
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  // The last question has no answer: the provider failed, or the reply was stopped before any text.
+  const dangling = !turn && !!lastUser && (last?.role === "user" || stoppedEarly);
+  const visible = messages.filter((m) => !isEmptyStoppedReply(m));
 
   return (
     <>
@@ -161,7 +180,7 @@ function ThreadView({ conversationId }: { conversationId: string }) {
 
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl gap-7 px-4 pt-6 pb-10">
-          {messages.map((m) =>
+          {visible.map((m) =>
             m.role === "user" ? (
               <UserMessage key={m.id} content={m.content} attachments={attachmentsOf(m)} />
             ) : (
@@ -187,10 +206,14 @@ function ThreadView({ conversationId }: { conversationId: string }) {
             />
           )}
 
-          {dangling && last && (
+          {dangling && lastUser && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 text-sm">
-              <span className="text-muted-foreground">Ответ на последнее сообщение не получен.</span>
-              <Button size="sm" variant="outline" onClick={() => resend(conversationId, last)}>
+              <span className="text-muted-foreground">
+                {stoppedEarly
+                  ? "Генерация остановлена до начала ответа."
+                  : "Ответ на последнее сообщение не получен."}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => resend(conversationId, lastUser)}>
                 <Send /> Отправить повторно
               </Button>
             </div>

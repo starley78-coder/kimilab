@@ -6,7 +6,10 @@ import { getKimiStatus } from "@/lib/kimi.functions";
 import { IMAGE_BUCKET, parseStoredAttachments, type StoredAttachment } from "@/lib/chat/schema";
 import type { ReasoningEffort } from "@/lib/kimi/config";
 
-export type ConversationRow = Pick<Tables<"conversations">, "id" | "title" | "created_at" | "updated_at">;
+export type ConversationRow = Pick<
+  Tables<"conversations">,
+  "id" | "title" | "created_at" | "updated_at"
+>;
 export type MessageRow = Tables<"messages">;
 
 export const conversationsQuery = () =>
@@ -99,7 +102,9 @@ export async function deleteConversation(id: string): Promise<void> {
     .select("attachments")
     .eq("conversation_id", id);
   if (readError) throw new Error(readError.message);
-  const paths = (rows ?? []).flatMap((r) => parseStoredAttachments(r.attachments).map((a) => a.path));
+  const paths = (rows ?? []).flatMap((r) =>
+    parseStoredAttachments(r.attachments).map((a) => a.path),
+  );
   if (paths.length) {
     // Best effort: remove the stored images first; the conversation delete cascades messages.
     const { error: storageError } = await supabase.storage.from(IMAGE_BUCKET).remove(paths);
@@ -141,13 +146,32 @@ export async function saveStoppedReply(input: {
   if (error) throw new Error(error.message);
 }
 
+/** Removes "stopped before any text" markers so a resend replaces them. */
+export async function deleteEmptyStoppedReplies(conversationId: string): Promise<void> {
+  const { error } = await supabase
+    .from("messages")
+    .delete()
+    .eq("conversation_id", conversationId)
+    .eq("role", "assistant")
+    .eq("status", "stopped")
+    .eq("content", "");
+  if (error) throw new Error(error.message);
+}
+
+/** A reply the user stopped before the model produced any visible text. */
+export function isEmptyStoppedReply(row: Pick<MessageRow, "role" | "status" | "content">): boolean {
+  return row.role === "assistant" && row.status === "stopped" && !row.content.trim();
+}
+
 export const signedUrlsQuery = (paths: string[]) =>
   queryOptions({
     queryKey: ["signed-urls", ...paths],
     staleTime: 50 * 60 * 1000,
     enabled: paths.length > 0,
     queryFn: async (): Promise<Record<string, string>> => {
-      const { data, error } = await supabase.storage.from(IMAGE_BUCKET).createSignedUrls(paths, 3600);
+      const { data, error } = await supabase.storage
+        .from(IMAGE_BUCKET)
+        .createSignedUrls(paths, 3600);
       if (error) throw new Error(error.message);
       const out: Record<string, string> = {};
       for (const item of data ?? []) {
@@ -174,7 +198,10 @@ function makeSnippet(content: string, q: string): string {
   const flat = content.replace(/\s+/g, " ");
   if (idx < 0) return flat.slice(0, 90);
   const start = Math.max(0, idx - 30);
-  const raw = content.slice(start, idx + q.length + 60).replace(/\s+/g, " ").trim();
+  const raw = content
+    .slice(start, idx + q.length + 60)
+    .replace(/\s+/g, " ")
+    .trim();
   return `${start > 0 ? "…" : ""}${raw}${idx + q.length + 60 < content.length ? "…" : ""}`;
 }
 
@@ -212,7 +239,12 @@ export async function searchHistory(query: string): Promise<SearchHit[]> {
   }
   for (const row of titles.data ?? []) {
     if (!hits.has(row.id)) {
-      hits.set(row.id, { conversationId: row.id, title: row.title, snippet: null, updatedAt: row.updated_at });
+      hits.set(row.id, {
+        conversationId: row.id,
+        title: row.title,
+        snippet: null,
+        updatedAt: row.updated_at,
+      });
     }
   }
   return [...hits.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

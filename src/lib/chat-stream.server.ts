@@ -22,11 +22,7 @@ import {
   sanitizeProviderText,
   type ChatError,
 } from "@/lib/kimi/errors";
-import {
-  buildKimiRequest,
-  userContentWithImages,
-  type ApiMessage,
-} from "@/lib/kimi/request";
+import { buildKimiRequest, userContentWithImages, type ApiMessage } from "@/lib/kimi/request";
 import {
   createSseParser,
   parseCompletionChunk,
@@ -40,6 +36,12 @@ const MAX_HISTORY_MESSAGES = 80;
 const MAX_INLINE_IMAGES = 6;
 const MAX_IMAGE_TURNS = 3;
 const PING_INTERVAL_MS = 15_000;
+const STOP_WATCH_INTERVAL_MS = 1_500;
+const CONNECT_TIMEOUT_MS = 90_000;
+const STREAM_IDLE_TIMEOUT_MS = 180_000;
+const FULL_RESPONSE_TIMEOUT_MS = 600_000;
+const MAX_CONNECT_ATTEMPTS = 4;
+const MAX_AUTO_RETRY_AFTER_S = 3;
 
 const encoder = new TextEncoder();
 
@@ -156,6 +158,21 @@ function callKimi(
   });
 }
 
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new Error("aborted"));
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function retryAfterSeconds(res: Response): number | undefined {
   const raw = res.headers.get("retry-after");
   if (!raw) return undefined;
@@ -179,7 +196,12 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   const supabaseKey = process.env["SUPABASE_PUBLISHABLE_KEY"];
   if (!supabaseUrl || !supabaseKey) {
     return errorResponse(
-      appError(500, "backend_not_configured", "Сервер не настроен", "Не найдены настройки базы данных."),
+      appError(
+        500,
+        "backend_not_configured",
+        "Сервер не настроен",
+        "Не найдены настройки базы данных.",
+      ),
     );
   }
 
@@ -187,13 +209,17 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   const authHeader = request.headers.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token || token.split(".").length !== 3) {
-    return errorResponse(appError(401, "unauthorized", "Требуется вход", "Сессия не найдена. Войдите заново."));
+    return errorResponse(
+      appError(401, "unauthorized", "Требуется вход", "Сессия не найдена. Войдите заново."),
+    );
   }
   const supabase = createUserClient(supabaseUrl, supabaseKey, token);
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
   const userId = claimsData?.claims?.sub;
   if (claimsError || !userId) {
-    return errorResponse(appError(401, "unauthorized", "Сессия истекла", "Войдите заново, чтобы продолжить."));
+    return errorResponse(
+      appError(401, "unauthorized", "Сессия истекла", "Войдите заново, чтобы продолжить."),
+    );
   }
 
   // 2. Validate input
@@ -202,26 +228,52 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     const parsed = chatRequestSchema.safeParse(await request.json());
     if (!parsed.success) {
       return errorResponse(
-        appError(400, "invalid_request", "Некорректный запрос", parsed.error.issues[0]?.message ?? "Проверьте данные."),
+        appError(
+          400,
+          "invalid_request",
+          "Некорректный запрос",
+          parsed.error.issues[0]?.message ?? "Проверьте данные.",
+        ),
       );
     }
     body = parsed.data;
   } catch {
-    return errorResponse(appError(400, "invalid_request", "Некорректный запрос", "Тело запроса не является JSON."));
+    return errorResponse(
+      appError(400, "invalid_request", "Некорректный запрос", "Тело запроса не является JSON."),
+    );
   }
   if (body.attachments.some((a) => !a.path.startsWith(`${userId}/${body.conversationId}/`))) {
-    return errorResponse(appError(400, "invalid_attachment", "Некорректное вложение", "Изображение не принадлежит диалогу."));
+    return errorResponse(
+      appError(
+        400,
+        "invalid_attachment",
+        "Некорректное вложение",
+        "Изображение не принадлежит диалогу.",
+      ),
+    );
   }
 
   // 3. Workspace access (personal app: owner only)
   const { data: access, error: accessError } = await supabase.rpc("claim_workspace_access");
   if (accessError) {
     console.error("[chat] access check failed", accessError.message);
-    return errorResponse(appError(500, "access_check_failed", "Ошибка проверки доступа", "Не удалось проверить доступ."));
+    return errorResponse(
+      appError(
+        500,
+        "access_check_failed",
+        "Ошибка проверки доступа",
+        "Не удалось проверить доступ.",
+      ),
+    );
   }
   if (!(access as { has_access?: boolean } | null)?.has_access) {
     return errorResponse(
-      appError(403, "no_workspace_access", "Нет доступа", "Это персональное пространство другого пользователя."),
+      appError(
+        403,
+        "no_workspace_access",
+        "Нет доступа",
+        "Это персональное пространство другого пользователя.",
+      ),
     );
   }
 
@@ -232,7 +284,9 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     .eq("id", body.conversationId)
     .maybeSingle();
   if (convError || !conversation) {
-    return errorResponse(appError(404, "conversation_not_found", "Диалог не найден", "Диалог удалён или недоступен."));
+    return errorResponse(
+      appError(404, "conversation_not_found", "Диалог не найден", "Диалог удалён или недоступен."),
+    );
   }
 
   // 5. Persist the user message first so it is never lost, even if the provider call fails
@@ -249,7 +303,9 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   );
   if (userInsertError) {
     console.error("[chat] user message insert failed", userInsertError.message);
-    return errorResponse(appError(500, "save_failed", "Не удалось сохранить сообщение", "Повторите попытку."));
+    return errorResponse(
+      appError(500, "save_failed", "Не удалось сохранить сообщение", "Повторите попытку."),
+    );
   }
 
   // 6. Provider configuration (server secrets)
@@ -276,11 +332,20 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   const { data: quota, error: quotaError } = await supabase.rpc("consume_chat_quota");
   if (quotaError) {
     console.error("[chat] quota check failed", quotaError.message);
-    return errorResponse(appError(500, "quota_check_failed", "Ошибка лимита", "Не удалось проверить лимит запросов."));
+    return errorResponse(
+      appError(500, "quota_check_failed", "Ошибка лимита", "Не удалось проверить лимит запросов."),
+    );
   }
-  const q = quota as { allowed?: boolean; retry_after?: number; scope?: "minute" | "day"; limit?: number } | null;
+  const q = quota as {
+    allowed?: boolean;
+    retry_after?: number;
+    scope?: "minute" | "day";
+    limit?: number;
+  } | null;
   if (!q?.allowed) {
-    return errorResponse(rateLimitedError(q?.retry_after ?? 60, q?.scope ?? "minute", q?.limit ?? 0));
+    return errorResponse(
+      rateLimitedError(q?.retry_after ?? 60, q?.scope ?? "minute", q?.limit ?? 0),
+    );
   }
 
   // 8. Load history up to and including this user message
@@ -291,7 +356,9 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     .order("seq", { ascending: false })
     .limit(MAX_HISTORY_MESSAGES);
   if (historyError || !rows) {
-    return errorResponse(appError(500, "history_failed", "Ошибка истории", "Не удалось загрузить историю диалога."));
+    return errorResponse(
+      appError(500, "history_failed", "Ошибка истории", "Не удалось загрузить историю диалога."),
+    );
   }
   let history: HistoryRow[] = [...rows].reverse();
   const idx = history.findIndex((r) => r.id === body.userMessageId);
@@ -303,34 +370,15 @@ export async function handleChatRequest(request: Request): Promise<Response> {
     apiMessages = await buildApiMessages(supabase, history);
   } catch (e) {
     console.error("[chat] build messages failed", e);
-    return errorResponse(appError(500, "attachments_failed", "Ошибка вложений", "Не удалось подготовить изображения."));
+    return errorResponse(
+      appError(500, "attachments_failed", "Ошибка вложений", "Не удалось подготовить изображения."),
+    );
   }
 
-  // 9. Call Kimi
+  // 9. Stream the reply. The provider call happens inside the stream so the browser
+  //    gets a `start` event as soon as the user message is stored.
   const upstreamAbort = new AbortController();
   request.signal?.addEventListener("abort", () => upstreamAbort.abort(), { once: true });
-
-  let mode: "stream" | "full" = "stream";
-  let upstream: Response;
-  try {
-    upstream = await callKimi(config, apiMessages, body.reasoningEffort, true, upstreamAbort.signal);
-  } catch (e) {
-    return errorResponse(connectionError(errorDetail(e, config.apiKey)));
-  }
-  if (!upstream.ok) {
-    const failure = await providerFailure(upstream, config.apiKey);
-    const streamUnsupported = upstream.status === 400 && /stream/i.test(failure.detail ?? "");
-    if (!streamUnsupported) return errorResponse(failure);
-    mode = "full";
-    try {
-      upstream = await callKimi(config, apiMessages, body.reasoningEffort, false, upstreamAbort.signal);
-    } catch (e) {
-      return errorResponse(connectionError(errorDetail(e, config.apiKey)));
-    }
-    if (!upstream.ok) return errorResponse(await providerFailure(upstream, config.apiKey));
-  }
-  const contentType = upstream.headers.get("content-type") ?? "";
-  if (mode === "stream" && !contentType.includes("text/event-stream")) mode = "full";
 
   const saveAssistant = async (
     content: string,
@@ -367,24 +415,55 @@ export async function handleChatRequest(request: Request): Promise<Response> {
   const responseBody = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
-      const send = (event: ChatStreamEvent) => {
+      const write = (chunk: string) => {
         if (closed) return;
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          controller.enqueue(encoder.encode(chunk));
         } catch {
           closed = true;
         }
       };
-      const ping = setInterval(() => {
-        if (closed) return;
+      const send = (event: ChatStreamEvent) => write(`data: ${JSON.stringify(event)}\n\n`);
+      const ping = setInterval(() => write(": ping\n\n"), PING_INTERVAL_MS);
+
+      // Stop detection that does not depend on the hosting runtime noticing a closed
+      // connection: the browser stores a "stopped" reply under the same id (or deletes
+      // the conversation), and this watcher aborts the provider call when it sees that.
+      let stoppedByClient = false;
+      let watching = false;
+      const watcher = setInterval(async () => {
+        if (watching || upstreamAbort.signal.aborted) return;
+        watching = true;
         try {
-          controller.enqueue(encoder.encode(": ping\n\n"));
-        } catch {
-          closed = true;
+          const { data: found, error: watchError } = await supabase
+            .from("messages")
+            .select("id")
+            .in("id", [body.userMessageId, body.assistantMessageId]);
+          if (watchError || !found) return;
+          const ids = new Set(found.map((r) => r.id));
+          if (ids.has(body.assistantMessageId) || !ids.has(body.userMessageId)) {
+            stoppedByClient = true;
+            upstreamAbort.abort();
+          }
+        } finally {
+          watching = false;
         }
-      }, PING_INTERVAL_MS);
+      }, STOP_WATCH_INTERVAL_MS);
+
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      let timedOut = false;
+      const armIdle = (ms: number) => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          timedOut = true;
+          upstreamAbort.abort();
+        }, ms);
+      };
+
       const finish = () => {
         clearInterval(ping);
+        clearInterval(watcher);
+        if (idleTimer) clearTimeout(idleTimer);
         if (!closed) {
           closed = true;
           try {
@@ -402,7 +481,6 @@ export async function handleChatRequest(request: Request): Promise<Response> {
         assistantMessageId: body.assistantMessageId,
         model: config.modelId,
         provider: config.providerLabel,
-        mode,
       });
 
       let text = "";
@@ -412,69 +490,127 @@ export async function handleChatRequest(request: Request): Promise<Response> {
       let streamError: ChatError | null = null;
 
       try {
-        if (mode === "full") {
-          const raw = (await upstream.json()) as unknown;
-          const info = parseCompletionChunk(raw);
-          if (info.errorMessage) {
-            streamError = describeProviderError(502, sanitizeProviderText(info.errorMessage, [config.apiKey]));
+        // --- Connect (streaming first; plain request if the provider rejects streaming) ---
+        let mode: "stream" | "full" = "stream";
+        let upstream: Response | null = null;
+        armIdle(CONNECT_TIMEOUT_MS);
+        for (let attempt = 1; ; attempt++) {
+          const res = await callKimi(
+            config,
+            apiMessages,
+            body.reasoningEffort,
+            mode === "stream",
+            upstreamAbort.signal,
+          );
+          if (res.ok) {
+            upstream = res;
+            break;
           }
-          text = info.content;
-          usage = info.usage;
-          finishReason = info.finishReason;
-          send({ type: "phase", phase: "answering" });
-          if (text) send({ type: "delta", text });
-        } else {
-          const reader = upstream.body!.getReader();
-          const decoder = new TextDecoder();
-          const parser = createSseParser((data) => {
-            if (data === "[DONE]") return;
-            let json: unknown;
-            try {
-              json = JSON.parse(data);
-            } catch {
-              return;
-            }
-            const info = parseCompletionChunk(json);
+          const failure = await providerFailure(res, config.apiKey);
+          // Short provider-side throttling (e.g. the previous request is still closing): wait and try again.
+          if (
+            failure.status === 429 &&
+            attempt < MAX_CONNECT_ATTEMPTS &&
+            (failure.retryAfter ?? Infinity) <= MAX_AUTO_RETRY_AFTER_S
+          ) {
+            await sleep(Math.max(1, failure.retryAfter ?? 1) * 1000, upstreamAbort.signal);
+            continue;
+          }
+          if (mode === "stream" && failure.status === 400 && /stream/i.test(failure.detail ?? "")) {
+            mode = "full";
+            continue;
+          }
+          streamError = failure;
+          break;
+        }
+
+        if (upstream) {
+          const contentType = upstream.headers.get("content-type") ?? "";
+          if (mode === "stream" && !contentType.includes("text/event-stream")) mode = "full";
+
+          if (mode === "full" || !upstream.body) {
+            armIdle(FULL_RESPONSE_TIMEOUT_MS);
+            send({ type: "phase", phase: "full" });
+            const info = parseCompletionChunk((await upstream.json()) as unknown);
             if (info.errorMessage) {
-              streamError = describeProviderError(502, sanitizeProviderText(info.errorMessage, [config.apiKey]));
-              return;
+              streamError = describeProviderError(
+                502,
+                sanitizeProviderText(info.errorMessage, [config.apiKey]),
+              );
             }
-            if (info.hasReasoning && phase === null) {
-              phase = "thinking";
-              send({ type: "phase", phase });
+            text = info.content;
+            usage = info.usage;
+            finishReason = info.finishReason;
+            if (text) {
+              send({ type: "phase", phase: "answering" });
+              send({ type: "delta", text });
             }
-            if (info.content) {
-              if (phase !== "answering") {
-                phase = "answering";
+          } else {
+            const reader = upstream.body.getReader();
+            const decoder = new TextDecoder();
+            const parser = createSseParser((data) => {
+              if (data === "[DONE]") return;
+              let json: unknown;
+              try {
+                json = JSON.parse(data);
+              } catch {
+                return;
+              }
+              const info = parseCompletionChunk(json);
+              if (info.errorMessage) {
+                streamError = describeProviderError(
+                  502,
+                  sanitizeProviderText(info.errorMessage, [config.apiKey]),
+                );
+                return;
+              }
+              if (info.hasReasoning && phase === null) {
+                phase = "thinking";
                 send({ type: "phase", phase });
               }
-              text += info.content;
-              send({ type: "delta", text: info.content });
+              if (info.content) {
+                if (phase !== "answering") {
+                  phase = "answering";
+                  send({ type: "phase", phase });
+                }
+                text += info.content;
+                send({ type: "delta", text: info.content });
+              }
+              if (info.usage) usage = info.usage;
+              if (info.finishReason) finishReason = info.finishReason;
+            });
+            for (;;) {
+              armIdle(STREAM_IDLE_TIMEOUT_MS);
+              const { done, value } = await reader.read();
+              if (done) break;
+              parser.feed(decoder.decode(value, { stream: true }));
+              if (streamError) {
+                await reader.cancel().catch(() => undefined);
+                break;
+              }
             }
-            if (info.usage) usage = info.usage;
-            if (info.finishReason) finishReason = info.finishReason;
-          });
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            parser.feed(decoder.decode(value, { stream: true }));
-            if (streamError) {
-              await reader.cancel().catch(() => undefined);
-              break;
-            }
+            parser.feed(decoder.decode());
+            parser.end();
           }
-          parser.feed(decoder.decode());
-          parser.end();
         }
       } catch (e) {
-        if (upstreamAbort.signal.aborted) {
-          // The browser stopped the generation: keep what was produced so far.
-          if (text) await saveAssistant(text, "stopped", usage, "stopped");
+        if (timedOut) {
+          streamError = describeProviderError(
+            504,
+            "Провайдер не прислал данные за отведённое время, запрос прерван.",
+          );
+        } else if (upstreamAbort.signal.aborted) {
+          // Stopped by the user (or the connection closed): keep what was produced so far.
+          // When the browser already stored the stopped reply, the upsert is a no-op.
+          if (text && !stoppedByClient) await saveAssistant(text, "stopped", usage, "stopped");
           finish();
           return;
+        } else {
+          streamError = connectionError(errorDetail(e, config.apiKey));
         }
-        streamError = connectionError(errorDetail(e, config.apiKey));
       }
+      if (idleTimer) clearTimeout(idleTimer);
+      clearInterval(watcher);
 
       if (usage) send({ type: "usage", usage });
 
@@ -491,7 +627,12 @@ export async function handleChatRequest(request: Request): Promise<Response> {
       else if (error) {
         send({
           type: "error",
-          error: appError(500, "save_failed", "Ответ не сохранён", "Ответ получен, но не записан в историю."),
+          error: appError(
+            500,
+            "save_failed",
+            "Ответ не сохранён",
+            "Ответ получен, но не записан в историю.",
+          ),
         });
       }
       finish();

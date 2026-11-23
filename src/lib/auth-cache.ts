@@ -12,7 +12,9 @@ export function rememberValidatedUser(userId: string) {
 }
 
 export function isRecentlyValidated(userId: string): boolean {
-  return !!lastValidated && lastValidated.userId === userId && Date.now() - lastValidated.at < TTL_MS;
+  return (
+    !!lastValidated && lastValidated.userId === userId && Date.now() - lastValidated.at < TTL_MS
+  );
 }
 
 export function resetValidatedUser() {

@@ -27,7 +27,11 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { isTurnActive, useChatRuntime, useLiveTurn } from "@/components/chat/chat-runtime";
-import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_INPUT_BYTES, MAX_IMAGES_PER_MESSAGE } from "@/lib/chat/schema";
+import {
+  ALLOWED_IMAGE_TYPES,
+  MAX_IMAGE_INPUT_BYTES,
+  MAX_IMAGES_PER_MESSAGE,
+} from "@/lib/chat/schema";
 import {
   MODEL_DISPLAY_NAME,
   REASONING_EFFORTS,
@@ -64,7 +68,11 @@ function AttachButton() {
   const full = attachments.files.length >= MAX_IMAGES_PER_MESSAGE;
   return (
     <PromptInputButton
-      tooltip={full ? `Не больше ${MAX_IMAGES_PER_MESSAGE} изображений` : "Прикрепить изображение (PNG, JPG, WebP)"}
+      tooltip={
+        full
+          ? `Не больше ${MAX_IMAGES_PER_MESSAGE} изображений`
+          : "Прикрепить изображение (PNG, JPG, WebP)"
+      }
       onClick={() => attachments.openFileDialog()}
       disabled={full}
       aria-label="Прикрепить изображение"
@@ -100,8 +108,8 @@ function EffortSelect() {
         aria-label="Уровень рассуждений"
         className="h-8 gap-1.5 rounded-md px-2 text-xs font-medium"
       >
-        <span className="text-muted-foreground">Рассуждения</span>
-        <PromptInputSelectValue />
+        <span className="hidden text-muted-foreground sm:inline">Рассуждения</span>
+        <PromptInputSelectValue>{REASONING_EFFORT_LABELS[effort]}</PromptInputSelectValue>
       </PromptInputSelectTrigger>
       <PromptInputSelectContent align="start">
         {REASONING_EFFORTS.map((e) => (
@@ -117,7 +125,13 @@ function EffortSelect() {
   );
 }
 
-function SubmitControl({ conversationId, submitting }: { conversationId: string | null; submitting: boolean }) {
+function SubmitControl({
+  conversationId,
+  submitting,
+}: {
+  conversationId: string | null;
+  submitting: boolean;
+}) {
   const controller = usePromptInputController();
   const turn = useLiveTurn(conversationId);
   const { stop } = useChatRuntime();
@@ -198,14 +212,14 @@ function ComposerInner({
       <PromptInputTextarea
         ref={textareaRef}
         placeholder="Спросите Kimi… (Enter — отправить, Shift+Enter — новая строка)"
-        className="min-h-[72px] px-4 pt-3.5 text-[0.95rem] leading-relaxed"
+        className="min-h-[96px] px-4 pt-3.5 text-[0.95rem] leading-relaxed"
         aria-label="Сообщение"
       />
       <PromptInputFooter className="px-2 pb-2">
         <PromptInputTools>
           <AttachButton />
           <EffortSelect />
-          <span className="hidden items-center gap-1.5 px-1.5 text-xs text-muted-foreground sm:inline-flex">
+          <span className="hidden items-center gap-1.5 whitespace-nowrap px-1.5 text-xs text-muted-foreground sm:inline-flex">
             <span className="size-1.5 rounded-full bg-signal" aria-hidden="true" />
             {MODEL_DISPLAY_NAME}
           </span>
